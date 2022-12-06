@@ -1,3 +1,4 @@
+from IPython import embed
 import os
 import math
 import yaml
@@ -31,8 +32,10 @@ class UpstreamExpert(nn.Module):
         modelrc = config['downstream_expert']['modelrc']
         model_cls = eval(modelrc['select'])
         model_conf = modelrc[modelrc['select']]
-        self.model = model_cls(self.featurizer.output_dim, output_class_num=TIMIT_PHONE_CLASSES, **model_conf)
-        self.model.load_state_dict(UpstreamExpert._fix_state_key(ckpt['Downstream']))
+        self.model = model_cls(self.featurizer.output_dim,
+                               output_class_num=TIMIT_PHONE_CLASSES, **model_conf)
+        self.model.load_state_dict(
+            UpstreamExpert._fix_state_key(ckpt['Downstream']))
 
     @staticmethod
     def _fix_state_key(states):
@@ -66,7 +69,8 @@ class UpstreamExpert(nn.Module):
         feats_length = [len(f) for f in feats]
         feats = pad_sequence(feats, batch_first=True)
         posteriors = self.model(feats)
-        posteriors = [F.softmax(p[:l], dim=-1) for p, l in zip(posteriors, feats_length)]
+        posteriors = [F.softmax(p[:l], dim=-1)
+                      for p, l in zip(posteriors, feats_length)]
         posteriors = pad_sequence(posteriors, batch_first=True)
 
         return {
