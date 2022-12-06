@@ -9,8 +9,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
-from .model import Model
-from .dataset import PhoneDataset
+from .model import ConvBank
+from .dataset import PronscorDataset
 
 
 class DownstreamExpert(nn.Module):
@@ -27,20 +27,20 @@ class DownstreamExpert(nn.Module):
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
 
-        self.train_dataset = PhoneDataset(
+        self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
-        self.dev_dataset = PhoneDataset(
+        self.dev_dataset = PronscorDataset(
             'dev', self.datarc['eval_batch_size'], **self.datarc)
-        self.test_dataset = PhoneDataset(
+        self.test_dataset = PronscorDataset(
             'test', self.datarc['eval_batch_size'], **self.datarc)
-        self.model = Model(input_dim=self.upstream_dim,
-                           output_class_num=self.train_dataset.class_num, **self.modelrc)
+        # self.model = Model(input_dim=self.upstream_dim,
+        #    output_class_num=self.train_dataset.class_num, **self.modelrc)
         self.objective = nn.CrossEntropyLoss()
 
         self.logging = os.path.join(expdir, 'log.log')
         self.best = defaultdict(lambda: 0)
 
-        delattr(self, 'model')
+        # delattr(self, 'model')
         model_cls = eval(self.modelrc['select'])
         model_conf = self.modelrc[self.modelrc['select']]
         self.model = model_cls(
