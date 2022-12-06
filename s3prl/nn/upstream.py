@@ -24,9 +24,21 @@ MIN_SECOND = 0.05
 SAMPLE_RATE = 16000
 
 
+def randomize_upstream(upstream: nn.Module):
+    def init_weights(m: nn.Module):
+        for p in m.parameters():
+            if p.dim() < 2:
+                torch.nn.init.normal_(p, mean=p.mean().item(), std=p.std().item())
+            else:
+                torch.nn.init.xavier_normal_(p)
+
+    upstream.apply(init_weights)
+
+
 class S3PRLUpstream(nn.Module):
     """
     This is an easy interface for using all the models in S3PRL.
+    See :doc:`../tutorial/upstream_collection` for the example usage and all the supported models.
 
     Args:
         name (str):
@@ -39,9 +51,12 @@ class S3PRLUpstream(nn.Module):
             If false, only downlaod checkpoint if not yet downloaded before.
             If true, force to re-download the checkpoint.
 
-        extra_conf (dict):
+        extra_conf (dict): (default, None)
             The extra arguments for each specific upstream, the available options are
             shown in each upstream section
+
+        randomize (bool): (default, False)
+            If True, randomize the upstream model
 
     .. note::
 
@@ -92,11 +107,18 @@ class S3PRLUpstream(nn.Module):
         refresh: bool = False,
         normalize: bool = False,
         extra_conf: dict = None,
+        randomize: bool = False,
     ):
         super().__init__()
-        self.upstream = getattr(hub, name)(
-            ckpt=path_or_url, refresh=refresh, **(extra_conf or {})
-        )
+        upstream_conf = {"refresh": refresh, **(extra_conf or {})}
+        if path_or_url is not None:
+            upstream_conf["ckpt"] = path_or_url
+
+        self.upstream = getattr(hub, name)(**upstream_conf)
+
+        if randomize:
+            randomize_upstream(self.upstream)
+
         self.normalize = normalize
 
         self.upstream.eval()
@@ -194,11 +216,11 @@ class S3PRLUpstream(nn.Module):
         all_hs = []
         all_lens = []
         for h, stride in zip(hidden_states, self.downsample_rates):
-            expected_max_h_len = max_wav_len // stride + 1
+            expected_max_h_len = len(range(0, max_wav_len, stride))
             h = self._match_length(h, expected_max_h_len)
             assert h.size(1) == expected_max_h_len
 
-            h_len = torch.div(original_wavs_len, stride, rounding_mode="floor") + 1
+            h_len = torch.div(original_wavs_len - 1, stride, rounding_mode="floor") + 1
             h = h[:, : max(h_len), :]
             if self.normalize:
                 h = F.layer_norm(h, h.shape[-1:])
@@ -233,7 +255,7 @@ class Featurizer(nn.Module):
     Example::
 
         >>> import torch
-        >>> from s3prl.nn import S3PRLUpstream
+        >>> from s3prl.nn import S3PRLUpstream, Featurizer
         ...
         >>> model = S3PRLUpstream("hubert")
         >>> model.eval()

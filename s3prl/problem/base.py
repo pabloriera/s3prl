@@ -29,8 +29,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
 
+from s3prl.dataio.collate_fn import default_collate_fn
 from s3prl.dataio.sampler import DistributedBatchSamplerWrapper
-from s3prl.dataset.base import default_collate_fn
 from s3prl.nn.upstream import Featurizer, S3PRLUpstream, UpstreamDownstreamModel
 from s3prl.task import Task
 from s3prl.util.override import parse_overrides
@@ -616,7 +616,10 @@ class Problem:
                         key for key in os.listdir(train_dir) if key.startswith("step_")
                     ]
                     ckpt_dirs.sort(key=lambda stem: int(stem.split("_")[-1]))
-                    if len(ckpt_dirs) >= conf.keep_num_ckpts:
+                    if (
+                        conf.keep_num_ckpts is not None
+                        and len(ckpt_dirs) >= conf.keep_num_ckpts
+                    ):
                         for ckpt_dir in ckpt_dirs[
                             : len(ckpt_dirs) - conf.keep_num_ckpts + 1
                         ]:
