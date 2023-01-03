@@ -7,6 +7,7 @@ import shutil
 import random
 import tempfile
 import importlib
+from IPython import embed
 from pathlib import Path
 
 import torch
@@ -268,15 +269,16 @@ class Runner():
         train_split = self.config['runner'].get("train_dataloader", "train")
         while pbar.n < pbar.total:
             try:
-                dataloader = self.downstream.model.get_dataloader(train_split, epoch=epoch)
+                #dataloader = self.downstream.model.get_dataloader(train_split, epoch=epoch)
+                dataloader = self.downstream.model.get_dataloader(train_split)
             except TypeError as e:
                 if "unexpected keyword argument 'epoch'" in str(e):
                     dataloader = self.downstream.model.get_dataloader(train_split)
+                   
                     if hasattr(dataloader, "sampler") and isinstance(dataloader.sampler, DistributedSampler):
                         dataloader.sampler.set_epoch(epoch)
                 else:
                     raise
-
             for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file)):
                 # try/except block for forward/backward
                 try:

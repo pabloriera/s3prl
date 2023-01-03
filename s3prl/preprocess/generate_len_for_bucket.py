@@ -17,6 +17,7 @@ import torchaudio
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from IPython import embed
 from pathlib import Path
 from joblib import Parallel, delayed
 
@@ -29,7 +30,7 @@ def get_preprocess_args():
     parser = argparse.ArgumentParser(description='preprocess arguments for any dataset.')
 
     parser.add_argument('-i', '--input_data', default='../LibriSpeech/', type=str, help='Path to your LibriSpeech directory', required=False)
-    parser.add_argument('-o', '--output_path', default='./data/', type=str, help='Path to store output', required=False)
+    parser.add_argument('-o', '--output_path', default='./downstream/pronscor/data', type=str, help='Path to store output', required=False)
     parser.add_argument('-a', '--audio_extension', default='.flac', type=str, help='audio file type (.wav / .flac / .mp3 / etc)', required=False)
     parser.add_argument('-n', '--name', default='len_for_bucket', type=str, help='Name of the output directory', required=False)
     parser.add_argument('--n_jobs', default=-1, type=int, help='Number of jobs used for feature extraction', required=False)
@@ -90,8 +91,8 @@ def main():
         SETS = ['small', 'medium', 'large'] + ['small-splitted', 'medium-splitted', 'large-splitted']
     elif 'librispeech' in args.input_data.lower():
         SETS = ['train-clean-100', 'train-clean-360', 'train-other-500', 'dev-clean', 'dev-other', 'test-clean', 'test-other']
-    elif 'timit' in args.input_data.lower():
-        SETS = ['TRAIN', 'TEST']
+    elif 'l2arctic' in args.input_data.lower():
+        SETS = ['TRAIN16k', 'TEST16k']
     else:
         raise NotImplementedError
     # change the SETS list to match your dataset, for example:

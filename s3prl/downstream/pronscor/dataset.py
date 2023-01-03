@@ -3,6 +3,7 @@
 ###############
 import os
 import random
+from IPython import embed
 #-------------#
 import pandas as pd
 #-------------#
@@ -29,7 +30,7 @@ class PronscorDataset(Dataset):
         self.data_root = data_root
         self.phone_path = phone_path
         self.sample_rate = sample_rate
-        self.class_num = 39  # NOTE: pre-computed, should not need change
+        self.class_num = 40  # NOTE: pre-computed, should not need change
 
         self.Y = {}
         phone_file = open(os.path.join(
@@ -38,47 +39,54 @@ class PronscorDataset(Dataset):
             line = line.strip('\n').split(' ')
             self.Y[line[0]] = [int(p) for p in line[1:]]
 
+        self.L = {}
+        label_file = open(os.path.join(
+            phone_path, 'converted_aligned_labels.txt')).readlines()
+        for line in label_file:
+            line = line.strip('\n').split(' ')
+            self.L[line[0]] = [int(l) for l in line[1:]]
+
         if split == 'train':
             train_list = open(os.path.join(
                 phone_path, 'train_split.txt')).readlines()
-            usage_list = [line for line in train_list if line.split(
-                '-')[2][:2] in ('SI', 'SX')]  # 462 speakers, 3696 sentences, 3.14 hr
+    
+            usage_list = [line.strip('\n') for line in train_list]  
         elif split == 'dev' or split == 'test':
             test_list = open(os.path.join(
                 phone_path, 'test_split.txt')).readlines()
             # Standard practice is to remove all "sa" sentences
             usage_list = [
-                line for line in test_list if line.split('-')[2][:2] != 'SA']
-            if split == 'dev':
-                usage_list = [line for line in usage_list if not line.split(
-                    '-')[1].lower() in TEST_SPEAKERS]  # held-out speakers from test
-            else:
-                usage_list = [line for line in usage_list if line.split(
-                    '-')[1].lower() in TEST_SPEAKERS]  # 24 core test speakers, 192 sentences, 0.16 hr
-        else:
+                line.strip('\n') for line in test_list]
+            # no separé un dev. ver si me lo cobra. 
+            #if split == 'dev':
+            #    usage_list = [line for line in usage_list if not line.split(
+            #        '-')[1].lower() in TEST_SPEAKERS]  # held-out speakers from test
+            #else:
+            #    usage_list = [line for line in usage_list if line.split(
+            #        '-')[1].lower() in TEST_SPEAKERS]  # 24 core test speakers, 192 sentences, 0.16 hr
+        else:  
             raise ValueError(
                 'Invalid \'split\' argument for dataset: PronscorDataset!')
         usage_list = {line.strip('\n'): None for line in usage_list}
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
               ', number of data for ' + split + ': ' + str(len(usage_list)))
-
+        #embed()
         # Read table for bucketing
         assert os.path.isdir(
             bucket_file), 'Please first run `preprocess/generate_len_for_bucket.py to get bucket file.'
-        table = pd.read_csv(os.path.join(bucket_file, 'TRAIN.csv' if split ==
-                            'train' else 'TEST.csv')).sort_values(by=['length'], ascending=False)
+        table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv' if split ==
+                            'train' else 'TEST16k.csv')).sort_values(by=['length'], ascending=False)
         X = table['file_path'].tolist()
         X_lens = table['length'].tolist()
 
         # Use bucketing to allow different batch sizes at run time
         self.X = []
         batch_x, batch_len = [], []
-
+        
         for x, x_len in zip(X, X_lens):
-            if self._parse_x_name(x).upper() in usage_list:
+            if self._parse_x_name(x) in usage_list:
                 batch_x.append(x)
                 batch_len.append(x_len)
-
                 # Fill in batch_x until batch is full
                 if len(batch_x) == bucket_size:
                     # Half the batch size if seq too long
@@ -88,7 +96,7 @@ class PronscorDataset(Dataset):
                     else:
                         self.X.append(batch_x)
                     batch_x, batch_len = [], []
-
+      
         # Gather the last batch
         if len(batch_x) > 1:
             if self._parse_x_name(x) in usage_list:
@@ -106,10 +114,11 @@ class PronscorDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, index):
+    
         # Load acoustic feature and pad
         wav_batch = [self._load_wav(x_file) for x_file in self.X[index]]
         label_batch = [torch.LongTensor(
-            self.Y[self._parse_x_name(x_file).upper()]) for x_file in self.X[index]]
+            self.Y[self._parse_x_name(x_file)]) for x_file in self.X[index]]
         return wav_batch, label_batch  # bucketing, return ((wavs, labels))
 
     def collate_fn(self, items):
