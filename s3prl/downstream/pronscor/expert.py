@@ -4,6 +4,7 @@
 import os
 import math
 import random
+from IPython import embed
 from collections import defaultdict
 import torch
 import torch.nn as nn
@@ -54,6 +55,7 @@ class DownstreamExpert(nn.Module):
         )
 
     def _get_eval_dataloader(self, dataset):
+
         return DataLoader(
             dataset, batch_size=1,  # for bucketing
             shuffle=False, num_workers=self.datarc['num_workers'],
@@ -82,6 +84,7 @@ class DownstreamExpert(nn.Module):
     # Interface
     def get_dataloader(self, split):
         return eval(f'self.get_{split}_dataloader')()
+    
 
     def _tile_representations(self, reps, factor):
         """ 
@@ -107,6 +110,7 @@ class DownstreamExpert(nn.Module):
         input_len, label_len = inputs.size(1), labels.size(-1)
 
         factor = int(round(label_len / input_len))
+        print(factor)
         if factor > 1:
             inputs = self._tile_representations(inputs, factor)
             input_len = inputs.size(1)
@@ -154,6 +158,7 @@ class DownstreamExpert(nn.Module):
             loss:
                 the loss to be optimized, should not be detached
         """
+        #embed()
         lengths = torch.LongTensor([len(l) for l in labels])
 
         features = pad_sequence(features, batch_first=True)
@@ -199,7 +204,7 @@ class DownstreamExpert(nn.Module):
             global_step:
                 global_step in runner, which is helpful for Tensorboard logging
         """
-        prefix = f'timit_phone/{split}-'
+        prefix = f'pronscor/{split}-'
         average = torch.FloatTensor(records['acc']).mean().item()
 
         logger.add_scalar(

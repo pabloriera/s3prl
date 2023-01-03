@@ -15,7 +15,7 @@ from s3prl.upstream.interfaces import Featurizer
 from .model import *
 
 EXAMPLE_FEAT_SEQLEN = 1000
-TIMIT_PHONE_CLASSES = 39
+TIMIT_PHONE_CLASSES = 40
 TIMIT_LABEL_STRIDE = 160
 
 
