@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from .model import ConvBank
 from .dataset import PronscorDataset
+from .text import load_text_encoder
 
 
 class DownstreamExpert(nn.Module):
@@ -36,7 +37,17 @@ class DownstreamExpert(nn.Module):
             'test', self.datarc['eval_batch_size'], **self.datarc)
         # self.model = Model(input_dim=self.upstream_dim,
         #    output_class_num=self.train_dataset.class_num, **self.modelrc)
-        self.objective = nn.CrossEntropyLoss()
+
+        self.config_loss = downstream_expert['modelrc'].get('loss')
+        if self.config_loss is None or self.config_loss == 'cross_entropy':
+            self.objective = nn.CrossEntropyLoss()
+        elif self.config_loss == 'ctc':
+            self.tokenizer = load_text_encoder(**downstream_expert["text"])
+
+            self.objective = nn.CTCLoss(
+                blank=self.tokenizer.pad_idx,
+                zero_infinity=self.modelrc["zero_infinity"],
+            )
 
         self.logging = os.path.join(expdir, 'log.log')
         self.best = defaultdict(lambda: 0)
@@ -84,7 +95,6 @@ class DownstreamExpert(nn.Module):
     # Interface
     def get_dataloader(self, split):
         return eval(f'self.get_{split}_dataloader')()
-    
 
     def _tile_representations(self, reps, factor):
         """ 
@@ -158,7 +168,7 @@ class DownstreamExpert(nn.Module):
             loss:
                 the loss to be optimized, should not be detached
         """
-        #embed()
+
         lengths = torch.LongTensor([len(l) for l in labels])
 
         features = pad_sequence(features, batch_first=True)
