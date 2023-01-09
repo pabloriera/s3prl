@@ -37,11 +37,11 @@ specaug:
 downstream_expert:
   corpus:                                 
     name: 'common_voice'                   # Specify corpus
-    path: '/work/harry87122/dataset/cv-corpus-7.0-2021-07-21/es/clips'
+    path: '/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/es/clips'
 
-    train: ['/work/harry87122/s3prl/s3prl/data/common_voice/es/train.tsv']
-    dev: ['/work/harry87122/s3prl/s3prl/data/common_voice/es/dev.tsv']
-    test: ['/work/harry87122/s3prl/s3prl/data/common_voice/es/test.tsv']
+    train: ['/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/para_s3prl/es/train.tsv']
+    dev: ['/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/para_s3prl/es/dev.tsv']
+    test: ['/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/para_s3prl/es/test.tsv']
 
     bucketing: True                       # Enable/Disable bucketing 
     batch_size: 16

@@ -37,7 +37,8 @@ def normalize(sent, language):
         if any(
             [
                 not (
-                    (ord(c) >= ord("A") and ord(c) <= ord("Z")) or c == " " or c == "'"
+                    (ord(c) >= ord("A") and ord(c) <=
+                     ord("Z")) or c == " " or c == "'"
                 )
                 for c in list(sent)
             ]
@@ -105,7 +106,7 @@ def write_tsv(data, out_path):
         writer = csv.writer(fp, delimiter="\t")
         writer.writerow(["path", "sentence"])
         for d in data:
-            path = d["path"][:-3] + "wav"
+            path = d["path"][:-3] + "mp3.wav"
             writer.writerow([path, d["sentence"]])
 
 
@@ -117,11 +118,14 @@ def write_txt(data, out_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, help="Root of Common Voice 7.0 directory.")
+    parser.add_argument("--root", type=str,
+                        help="Root of Common Voice 7.0 directory.")
     parser.add_argument("--lang", type=str, help="Language abbreviation.")
     parser.add_argument("--out", type=str, help="Path to output directory.")
-    parser.add_argument("--accent", type=str, default="none", help="English accent")
-    parser.add_argument("--hours", type=float, default=-1, help="Maximum hours used.")
+    parser.add_argument("--accent", type=str,
+                        default="none", help="English accent")
+    parser.add_argument("--hours", type=float, default=-
+                        1, help="Maximum hours used.")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)

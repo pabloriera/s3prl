@@ -1,9 +1,11 @@
 #!/bin/bash
 
-cv_root=/work/harry87122/dataset/cv-corpus-7.0-2021-07-21  # common voice 7.0 dataset location
-data_root=/work/harry87122/s3prl/s3prl/data/common_voice  # path to save data
+# cv_root=/work/harry87122/dataset/cv-corpus-7.0-2021-07-21  # common voice 7.0 dataset location
+cv_root=/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/
+data_root=/media/secondary/Datasets/cv-corpus-7.0-2021-07-21/para_s3prl
+# data_root=/work/harry87122/s3prl/s3prl/data/common_voice  # path to save data
 
-for lang in es zh-CN ar
+for lang in es
 do
     echo " == processing language ${lang} =="
     python3 common_voice_preprocess.py \
@@ -16,25 +18,25 @@ do
     #     --mode character \
     #     --output_file ${data_root}/${lang}/vocab.txt
     
-    for set in train dev test
-    do
-        echo " == downsampling language ${lang} (${set}) =="
-        python3 downsample_cv.py \
-            --root ${cv_root}/${lang}/clips \
-            --tsv ${data_root}/${lang}/${set}.tsv
-    done
-    echo ""
+    # for set in train dev test
+    # do
+    #     echo " == downsampling language ${lang} (${set}) =="
+    #     python3 downsample_cv.py \
+    #         --root ${cv_root}/${lang}/clips \
+    #         --tsv ${data_root}/${lang}/${set}.tsv
+    # done
+    # echo ""
 done
 
 
-for lang in es zh-CN ar
-do
-    for tsv in train.tsv dev.tsv test.tsv
-    do
-        echo " == downsampling language ${lang} (${tsv}) =="
-        python3 downsample_cv.py \
-            --root ${cv_root}/${lang}/clips \
-            --tsv ${data_root}/${lang}/${tsv}
-    done
-    echo ""
-done
+# for lang in es
+# do
+#     for tsv in train.tsv dev.tsv test.tsv
+#     do
+#         echo " == downsampling language ${lang} (${tsv}) =="
+#         python3 downsample_cv.py \
+#             --root ${cv_root}/${lang}/clips \
+#             --tsv ${data_root}/${lang}/${tsv}
+#     done
+#     echo ""
+# done
