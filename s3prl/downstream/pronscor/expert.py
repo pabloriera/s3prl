@@ -178,20 +178,59 @@ class DownstreamExpert(nn.Module):
         features, labels = self._match_length(features, labels)
         predicted = self.model(features)
 
-        # cause logits are in (batch, seq, class) and labels are in (batch, seq)
-        # nn.CrossEntropyLoss expect to have (N, class) and (N,) as input
-        # here we flatten logits and labels in order to apply nn.CrossEntropyLoss
-        class_num = predicted.size(-1)
-        loss = self.objective(
-            predicted.reshape(-1, class_num), labels.reshape(-1))
+        # if not self.training:
+        #     pass
 
-        predicted_classid = predicted.max(dim=-1).indices
-        sames = (predicted_classid == labels)
-        for s, l in zip(sames, lengths):
-            utter_result = s[:l].tolist()
-            records['acc'] += utter_result
-            records['sample_wise_metric'] += [
-                torch.FloatTensor(utter_result).mean().item()]
+        # eval code
+
+        if self.config_loss is None or self.config_loss == 'cross_entropy':
+            # cause logits are in (batch, seq, class) and labels are in (batch, seq)
+            # nn.CrossEntropyLoss expect to have (N, class) and (N,) as input
+            # here we flatten logits and labels in order to apply nn.CrossEntropyLoss
+            class_num = predicted.size(-1)
+            loss = self.objective(
+                predicted.reshape(-1, class_num), labels.reshape(-1))
+
+            predicted_classid = predicted.max(dim=-1).indices
+            sames = (predicted_classid == labels)
+            for s, l in zip(sames, lengths):
+                utter_result = s[:l].tolist()
+                records['acc'] += utter_result
+                records['sample_wise_metric'] += [
+                    torch.FloatTensor(utter_result).mean().item()]
+
+        elif self.config_loss == 'ctc':
+            logits, log_probs_len = self.model(features, lengths)
+
+            log_probs = nn.functional.log_softmax(logits, dim=-1)
+
+            loss = self.objective(
+                log_probs.transpose(0, 1),  # (N, T, C) -> (T, N, C)
+                labels,
+                log_probs_len,
+                labels_len,
+            )
+            records["loss"].append(loss.item())
+
+            pred_tokens = log_probs.argmax(dim=-1)
+            filtered_tokens = []
+            for pred_token in pred_tokens:
+                pred_token = pred_token.unique_consecutive()
+                filtered_token = [
+                    token
+                    for token in pred_token.tolist()
+                    if token != self.tokenizer.pad_idx and token != self.tokenizer.eos_idx
+                ]
+                filtered_tokens.append(filtered_token)
+            hypothesis = [
+                self.tokenizer.decode(h) for h in filtered_tokens
+            ]
+            groundtruth = [self.tokenizer.decode(g.tolist()) for g in labels]
+
+            # store all text in a batch
+            records["hypothesis"] += hypothesis
+            records["groundtruth"] += groundtruth
+            records["filename"] += filenames
 
         return loss
 
