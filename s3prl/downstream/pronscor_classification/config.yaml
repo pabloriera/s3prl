@@ -34,11 +34,11 @@ downstream_expert:
     train_batch_size: 64 
     eval_batch_size: 64
     data_root: /mnt/raid1/jazmin/data/l2arctic/
-    phone_path: './downstream/pronscor_class/data'
+    phone_path: './downstream/pronscor_classification/data'
     #phone_list: 'pronscor_class/data/phones-list.txt'
-    npc: 'False' 
-    phone_weights: './downstream/pronscor_class/data/phone_weights_50.yaml'
-    bucket_file: './downstream/pronscor_class/data/len_for_bucket_arctic' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
+    npc: False 
+    phone_weights: '/mnt/raid1/jazmin/exps/s3prl/s3prl/downstream/pronscor_classification/data/phone_weights_50.yaml'
+    bucket_file: './downstream/pronscor_classification/data/len_for_bucket_arctic' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
     train_dev_seed: 1337
 

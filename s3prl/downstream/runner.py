@@ -105,6 +105,8 @@ class Runner():
                 f'[Runner] - Loading {name} weights from the previous experiment')
             model.load_state_dict(init_weight)
 
+    
+
     def _init_model(self, model, name, trainable, interfaces=None):
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
@@ -283,7 +285,6 @@ class Runner():
                     raise
             for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file)):
                 # try/except block for forward/backward
-                from IPython import embed
                 try:
                     if pbar.n >= pbar.total:
                         break
@@ -300,12 +301,11 @@ class Runner():
 
                     if specaug:
                         features, _ = specaug(features)
-
                     loss = self.downstream.model(
                         train_split,
                         features, *others,
                         records=records,
-                    )
+                        )
                     batch_ids.append(batch_id)
 
                     gradient_accumulate_steps = self.config['runner'].get(

@@ -2,6 +2,7 @@
 import torch
 import numpy as np
 import yaml
+from IPython import embed
 
 def format_labels(labels_array, phones_array):
     '''
@@ -16,11 +17,28 @@ def format_labels(labels_array, phones_array):
         tmp_2darray = np.zeros((len(phones_array),40))
         end = elem
         col = phones_array[end]
-        lab = labels_array[end]
+        lab = labels_array[end]*2-1
         tmp_2darray[col][start:end+1] = lab
         labels_2darray += tmp_2darray
         start = end+1
     return(labels_2darray)
+
+
+def cum_matrix(phones_array):
+    index = np.where(phones_array[:-1] != phones_array[1:])[0]
+    rows = []
+    frame_counts = []
+    start = 0
+    for i in index:
+        tmp_row = np.zeros(len(phones))
+        end = i
+        tmp_row[start:end+1] = 1
+        num_frames = np.sum(tmp_row)
+        rows.append(tmp_row)
+        frame_counts.append(num_frames)
+        start = end+1
+    res = np.stack(rows, axis=0)
+    return(res, frame_counts)
 
 
 
@@ -64,9 +82,6 @@ def get_phone_weights_as_torch(phone_weights_path):
 
 
 
-
-'''
-
 def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and_class=False, min_frame_count=0):
     weights = mask *1
 
@@ -86,12 +101,13 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
 
 
 
-def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, log_per_phone_and_class_loss=False, phone_int2sym=None, phone_int2node = None, min_frame_count=0):
+def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, min_frame_count=0):
 
-    batch_labels_for_loss = torch.abs((batch_labels-1)/2)
+    batch_labels_for_loss = (batch_labels+1)/2
 
     loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels ==  1, batch_labels_for_loss, 
         phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
+    
     loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == -1, batch_labels_for_loss, 
         phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
@@ -102,29 +118,7 @@ def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_clas
         total_weights = sum_weights_pos + sum_weights_neg
         total_loss /= total_weights
 
-    if log_per_phone_and_class_loss:
-
-        pos_phone_loss = torch.sum(loss_pos,dim=[0,1])
-        neg_phone_loss = torch.sum(loss_neg,dim=[0,1])
-        loss_dict = {}
-        for phone_int, phone_sym in phone_int2sym.items():
-            phone_node_index = phone_int2node[phone_int]
-            loss_dict[phone_sym+'+'] = pos_phone_loss[phone_node_index] / weights[phone_node_index] / sum_weights_pos
-            loss_dict[phone_sym+'-'] = neg_phone_loss[phone_node_index] / weights[phone_node_index] / sum_weights_neg
-
-        return total_loss, loss_dict
-    else:
-        return total_loss
+    
+    return total_loss
 
 
-####
-loss = criterion_fast(outputs, labels, weights=phone_weights, phone_int2sym=phone_int2sym, 
-                        phone_int2node=phone_int2node, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=0)
-
-    loss.requires_grad_()
-
-    loss.backward()
-
-    return loss
-
-'''

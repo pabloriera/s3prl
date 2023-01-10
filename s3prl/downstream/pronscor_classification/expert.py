@@ -15,6 +15,9 @@ from .dataset import PronscorDataset
 from .train_utils import format_labels #, criterion 
 import numpy as np
 
+from s3prl.downstream.pronscor_classification.train_utils import get_phone_weights_as_torch, criterion
+
+
 
 class DownstreamExpert(nn.Module):
     """
@@ -29,9 +32,8 @@ class DownstreamExpert(nn.Module):
         self.upstream_dim = upstream_dim
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
-
-        #self.phone_weights = get_phone_weights_as_torch(config['downstream_expert']['datarc']['phone_weights'])
-        #self.npc = config['downstream_expert']['datarc']['npc']
+        self.phone_weights = get_phone_weights_as_torch(self.datarc['phone_weights'])
+        self.npc = self.datarc['npc']
 
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
@@ -132,7 +134,7 @@ class DownstreamExpert(nn.Module):
 
 
     # Interface
-    def forward(self, split, features, labels, phone_ids, records, npc, **kwargs):
+    def forward(self, split, features, labels, phone_ids, records, **kwargs):
         """
         Args:
             features:
@@ -184,17 +186,12 @@ class DownstreamExpert(nn.Module):
         for l in labels2d_list[1:]:
             labels2tensor = np.dstack((labels2tensor,l.T))
         labels = torch.from_numpy(labels2tensor.T).to(features.device)
-        embed()
+        phone_weights = self.phone_weights.to(features.device)
+        loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=self.npc, min_frame_count=0)
 
-        #loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=0)
+        return loss, predicted, labels
         
-        
-        
-        
-        #loss = self.objective(, )
 
-        
-    # interface
     def log_records(self, split, records, logger, global_step, **kwargs):
         """
         Args:
