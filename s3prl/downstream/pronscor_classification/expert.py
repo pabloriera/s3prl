@@ -174,7 +174,6 @@ class DownstreamExpert(nn.Module):
         
         labels = labels.detach().cpu().numpy()
         phone_ids = pad_sequence(phone_ids, batch_first=True, padding_value=-100).detach().cpu().numpy()
-        
         predicted = self.model(features)
         
         labels2d_list = []

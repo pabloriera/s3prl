@@ -13,23 +13,28 @@ import numpy as np
 
 from IPython import embed
 
-def get_summarisation_data(phones_array):
+from torch.nn.utils.rnn import pad_sequence
+
+def get_max_length(phone_ids_list):
+    max_len = max(len(x) for x in phone_ids_list)
+    return max_len
+
+
+def get_summarisation_data(phones_array, max_len_col):
+    phones_array = phones_array.cpu().detach().numpy()
     index = np.where(phones_array[:-1] != phones_array[1:])[0]
     rows = []
-    frame_counts = []
     phones = []
     start = 0
     for i in index:
-        tmp_row = np.zeros(len(phones))
+        tmp_row = np.zeros(max_len_col)
         end = i
         tmp_row[start:end+1] = 1
-        num_frames = np.sum(tmp_row)
         rows.append(tmp_row)
-        frame_counts.append(num_frames)
         phones.append(phones_array[i])
         start = end+1
     res = np.stack(rows, axis=0)
-    return(res, frame_counts, phones)
+    return(res, phones)
 
 
 def evaluate(runner, split=None, logger=None, global_step=0):
@@ -67,28 +72,79 @@ def evaluate(runner, split=None, logger=None, global_step=0):
         with torch.no_grad():
             features = runner.upstream.model(wavs)
             features = runner.featurizer.model(wavs, features)
-            -, out, labs = runner.downstream.model(
+            _ , out, labs = runner.downstream.model(
                 split,
                 features, *others,
                 records=records,
                 batch_id=batch_id,)
             batch_ids.append(batch_id)
             
-            summarization_batch = []
-            frame_counts_batch = []
-            phones_batch = []
-            for element in others:
-                matrix, frame_counts, phones = get_summarisation_data(others[1])
-                summarization_batch.append(matrix)
-                frame_counts_batch.append(frame_counts)
-                phones_batch.append(phones)
+            max_len_col = labs.shape[1]           
+            summarisation_matrix_list = []
+            phones_id_list = []
+            # element es phones array que es una sola frase o sea solo una tira
+            # quiero convertir esa tira en una matriz
+            for element in others[1]:
+                # matrix deberia ser una matriz de #phones_id x max_len del batch
+                matrix, phonesids = get_summarisation_data(element, max_len_col)
+                summarisation_matrix_list.append(matrix)
+                phones_id_list.append(phonesids)
+
+            max_len_row = get_max_length(summarisation_matrix_list)
             
-            summarization_tensor = np.dstack(summarization_batch)
-            summarization_tensor = torch.from_numpy(summarization_tensor)
+            padded_sum_mats_list = []
+            for summarisation_matrix in summarisation_matrix_list:
+                npad = [(0, max_len_row-len(summarisation_matrix)), (0,0)]
+                padded_summarisation_matrix = np.pad(summarisation_matrix, npad, 'constant', constant_values=0)
+                padded_sum_mats_list.append(padded_summarisation_matrix)
+            
+            
+            mats2tensor = padded_sum_mats_list[0].T
+            for m in padded_sum_mats_list[1:]:
+                mats2tensor = np.dstack((mats2tensor, m.T))
+            summarisation_batch = torch.from_numpy(mats2tensor.T)
+            
+            mask = abs(labs)
+            masked_outputs = out*mask
+            logits_by_phone_1hot = torch.matmul(summarisation_batch, masked_outputs)
+            labels_by_phone_1hot = torch.sign(torch.matmul(summarisation_batch, labs))
+            frame_counts = torch.matmul(summarisation_batch, mask)
+            frame_counts[frame_counts==0]=1
+
+            #le falta el log 
+            gop_score_by_phone_1hot = torch.div(logits_by_phone_1hot, frame_counts)
+            
+            gops_by_phone = torch.sum(gop_score_by_phone_1hot, dim=2).cpu().detach().numpy()
+            labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2).cpu().detach().numpy()
 
 
-        embed()
+            all_batch_phones = []
+            all_batch_scores = []
+            all_batch_labels = []
+            for i,phnlist in enumerate(phones_id_list):
+                phrase_phones = []
+                phrase_labels = []
+                phrase_gops =  []
+                for j,phone in enumerate(phnlist):
+                    phrase_phones.append(phone)
+                    phrase_labels.append(labels_by_phone[i][j])
+                    phrase_gops.append(gops_by_phone[i][j])
+                all_batch_phones += phrase_phones
+                all_batch_scores += phrase_gops
+                all_batch_labels += phrase_labels
 
+                
+            
+                
+
+
+
+
+    
+
+           
+
+         
 
 ckpt_path = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4/states-150000.ckpt'
 ckpt = torch.load(ckpt_path, map_location='cpu')
