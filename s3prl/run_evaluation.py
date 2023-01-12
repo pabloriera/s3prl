@@ -9,7 +9,10 @@ from tensorboardX import SummaryWriter
 
 from s3prl.downstream.runner import Runner
 import torch
+import joblib
+
 import numpy as np
+import pandas as pd
 
 from IPython import embed
 
@@ -62,6 +65,7 @@ def evaluate(runner, split=None, logger=None, global_step=0):
     evaluate_ratio = float(runner.config["runner"].get("evaluate_ratio", 1))
     evaluate_steps = round(len(dataloader) * evaluate_ratio)
 
+    output = []
     batch_ids = []
     records = defaultdict(list)
     for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc=split, total=evaluate_steps)):
@@ -108,19 +112,19 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             masked_outputs = out*mask
             logits_by_phone_1hot = torch.matmul(summarisation_batch, masked_outputs)
             labels_by_phone_1hot = torch.sign(torch.matmul(summarisation_batch, labs))
+            embed()
             frame_counts = torch.matmul(summarisation_batch, mask)
             frame_counts[frame_counts==0]=1
 
             #le falta el log 
-            gop_score_by_phone_1hot = torch.div(logits_by_phone_1hot, frame_counts)
-            
-            gops_by_phone = torch.sum(gop_score_by_phone_1hot, dim=2).cpu().detach().numpy()
+            mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
+            #gops_by_phone = np.log(torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy())
+            gops_by_phone = torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy()
             labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2).cpu().detach().numpy()
 
 
-            all_batch_phones = []
-            all_batch_scores = []
-            all_batch_labels = []
+            df_batch_dict =  defaultdict(list)
+            
             for i,phnlist in enumerate(phones_id_list):
                 phrase_phones = []
                 phrase_labels = []
@@ -129,26 +133,23 @@ def evaluate(runner, split=None, logger=None, global_step=0):
                     phrase_phones.append(phone)
                     phrase_labels.append(labels_by_phone[i][j])
                     phrase_gops.append(gops_by_phone[i][j])
-                all_batch_phones += phrase_phones
-                all_batch_scores += phrase_gops
-                all_batch_labels += phrase_labels
+                df_batch_dict['phone_automatic'] += phrase_phones
+                df_batch_dict['gop_scores'] += phrase_gops
+                df_batch_dict['label'] += phrase_labels
 
-                
-            
-                
-
-
-
-
+            df_batch = pd.DataFrame.from_dict(df_batch_dict)
+            output.append(df_batch)
     
+    df2eval = pd.concat(output)
+    joblib.dump(df2eval, output_dir + output_filename)
 
-           
 
-         
-
-ckpt_path = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4/states-150000.ckpt'
-ckpt = torch.load(ckpt_path, map_location='cpu')
-ckpt['Args'].device = 'cpu'
+# 
+ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4/states-150000.ckpt'
+output_dir = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4'
+output_filename  = 'data4eval.pickle'
+ckpt       = torch.load(ckpt_path, map_location='cpu')
+ckpt['Args'].device    = 'cpu'
 ckpt['Args'].init_ckpt = ckpt_path
 split = 'test'
 

@@ -10,36 +10,11 @@ def format_labels(labels_array, phones_array):
     and turns them into a quasi one hot encoded (x_X) 2d tensor with
     labels in the frames of each target phone in the phrase
     '''
-    idx = np.where(phones_array[:-1] != phones_array[1:])[0]
-    labels_2darray = np.zeros((len(phones_array),40))
-    start = 0
-    for elem in idx:
-        tmp_2darray = np.zeros((len(phones_array),40))
-        end = elem
-        col = phones_array[end]
-        lab = labels_array[end]*2-1
-        tmp_2darray[col][start:end+1] = lab
-        labels_2darray += tmp_2darray
-        start = end+1
-    return(labels_2darray)
-
-
-def cum_matrix(phones_array):
-    index = np.where(phones_array[:-1] != phones_array[1:])[0]
-    rows = []
-    frame_counts = []
-    start = 0
-    for i in index:
-        tmp_row = np.zeros(len(phones))
-        end = i
-        tmp_row[start:end+1] = 1
-        num_frames = np.sum(tmp_row)
-        rows.append(tmp_row)
-        frame_counts.append(num_frames)
-        start = end+1
-    res = np.stack(rows, axis=0)
-    return(res, frame_counts)
-
+   
+    pam = phones_array!=-100
+    x = np.zeros((len(phones_array),40))
+    x[np.arange(len(phones_array[pam])),phones_array[pam]]=labels_array[pam]*2-1
+    return x
 
 
 #phone_sym2int_dict:  Dictionary mapping phone symbol to integer given a phone list path

@@ -185,6 +185,7 @@ class DownstreamExpert(nn.Module):
         for l in labels2d_list[1:]:
             labels2tensor = np.dstack((labels2tensor,l.T))
         labels = torch.from_numpy(labels2tensor.T).to(features.device)
+       
         phone_weights = self.phone_weights.to(features.device)
         loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=self.npc, min_frame_count=0)
 
