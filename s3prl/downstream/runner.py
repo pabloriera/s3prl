@@ -105,8 +105,6 @@ class Runner():
                 f'[Runner] - Loading {name} weights from the previous experiment')
             model.load_state_dict(init_weight)
 
-    
-
     def _init_model(self, model, name, trainable, interfaces=None):
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
@@ -256,7 +254,7 @@ class Runner():
         # progress bar
         tqdm_file = sys.stderr if is_leader_process() else open(os.devnull, 'w')
         pbar = tqdm(total=self.config['runner']['total_steps'],
-                    dynamic_ncols=True, desc='overall', file=tqdm_file, position=0, leave=True)
+                    dynamic_ncols=True, desc='overall', file=tqdm_file)
         init_step = self.init_ckpt.get('Step')
         if init_step:
             pbar.n = init_step
@@ -283,7 +281,7 @@ class Runner():
                         dataloader.sampler.set_epoch(epoch)
                 else:
                     raise
-            for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file, position=0, leave=True)):
+            for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file)):
                 # try/except block for forward/backward
                 try:
                     if pbar.n >= pbar.total:
@@ -305,7 +303,7 @@ class Runner():
                         train_split,
                         features, *others,
                         records=records,
-                        )
+                    )
                     batch_ids.append(batch_id)
 
                     gradient_accumulate_steps = self.config['runner'].get(

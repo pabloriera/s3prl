@@ -12,11 +12,10 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from .model import ConvBank
 from .dataset import PronscorDataset
-from .train_utils import format_labels #, criterion 
+from .train_utils import format_labels  # , criterion
 import numpy as np
 
 from s3prl.downstream.pronscor_classification.train_utils import get_phone_weights_as_torch, criterion
-
 
 
 class DownstreamExpert(nn.Module):
@@ -32,7 +31,8 @@ class DownstreamExpert(nn.Module):
         self.upstream_dim = upstream_dim
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
-        self.phone_weights = get_phone_weights_as_torch(self.datarc['phone_weights'])
+        self.phone_weights = get_phone_weights_as_torch(
+            self.datarc['phone_weights'])
         self.npc = self.datarc['npc']
 
         self.train_dataset = PronscorDataset(
@@ -91,7 +91,6 @@ class DownstreamExpert(nn.Module):
     # Interface
     def get_dataloader(self, split):
         return eval(f'self.get_{split}_dataloader')()
-    
 
     def _tile_representations(self, reps, factor):
         """ 
@@ -117,7 +116,6 @@ class DownstreamExpert(nn.Module):
         input_len, label_len = inputs.size(1), labels.size(-1)
 
         factor = int(round(label_len / input_len))
-        print(factor)
         if factor > 1:
             inputs = self._tile_representations(inputs, factor)
             input_len = inputs.size(1)
@@ -136,8 +134,10 @@ class DownstreamExpert(nn.Module):
         lengths = torch.LongTensor([len(l) for l in labels])
 
         features = pad_sequence(features, batch_first=True)
-        phone_ids = pad_sequence(phone_ids, batch_first=True, padding_value=-100)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100).to(features.device)
+        phone_ids = pad_sequence(
+            phone_ids, batch_first=True, padding_value=-100)
+        labels = pad_sequence(labels, batch_first=True,
+                              padding_value=-100).to(features.device)
         features, labels = self._match_length(features, labels)
 
         labels2d_list = []
@@ -183,25 +183,26 @@ class DownstreamExpert(nn.Module):
                 the loss to be optimized, should not be detached
         """
 
-        features, labels, phone_ids, lengths = self.process_input_forward( features, labels, phone_ids)
-       
+        features, labels, phone_ids, lengths = self.process_input_forward(
+            features, labels, phone_ids)
+
         phone_weights = self.phone_weights.to(features.device)
 
         predicted = self.model(features)
 
-        loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=self.npc, min_frame_count=0)
+        loss = criterion(predicted, labels, weights=phone_weights,
+                         norm_per_phone_and_class=self.npc, min_frame_count=0)
         records['loss'] += [loss]
 
         for pred, lab, l in zip(predicted, labels, lengths):
-            records['acc_pos'] += [(pred[:l][lab[:l]==1]>0.666).float().mean()]
-            m = (pred[:l][lab[:l]==0]<0.333).float().mean()
+            records['acc_pos'] += [(pred[:l][lab[:l] == 1]
+                                    > 0.666).float().mean()]
+            m = (pred[:l][lab[:l] == 0] < 0.333).float().mean()
             if not torch.isnan(m):
                 records['acc_neg'] += [m]
             # records['sample_wise_metric'] += [torch.FloatTensor(utter_result).mean().item()]
 
-
         return loss
-        
 
     def log_records(self, split, records, logger, global_step, **kwargs):
         """
