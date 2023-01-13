@@ -256,7 +256,7 @@ class Runner():
         # progress bar
         tqdm_file = sys.stderr if is_leader_process() else open(os.devnull, 'w')
         pbar = tqdm(total=self.config['runner']['total_steps'],
-                    dynamic_ncols=True, desc='overall', file=tqdm_file)
+                    dynamic_ncols=True, desc='overall', file=tqdm_file, position=0, leave=True)
         init_step = self.init_ckpt.get('Step')
         if init_step:
             pbar.n = init_step
@@ -283,7 +283,7 @@ class Runner():
                         dataloader.sampler.set_epoch(epoch)
                 else:
                     raise
-            for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file)):
+            for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file, position=0, leave=True)):
                 # try/except block for forward/backward
                 try:
                     if pbar.n >= pbar.total:

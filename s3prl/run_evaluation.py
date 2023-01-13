@@ -44,11 +44,8 @@ def evaluate(runner, split=None, logger=None, global_step=0):
     """evaluate function will always be called on a single process even during distributed training"""
     
     # When this member function is called directly by command line
-    not_during_training = split is None and logger is None and global_step == 0
-    if not_during_training:
-        split = runner.args.evaluate_split
-        tempdir = tempfile.mkdtemp()
-        logger = SummaryWriter(tempdir)
+    split = runner.args.evaluate_split
+
     # fix seed to guarantee the same evaluation protocol across steps
     random.seed(runner.args.seed)
     np.random.seed(runner.args.seed)
@@ -66,8 +63,6 @@ def evaluate(runner, split=None, logger=None, global_step=0):
     evaluate_steps = round(len(dataloader) * evaluate_ratio)
 
     output = []
-    batch_ids = []
-    records = defaultdict(list)
     for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc=split, total=evaluate_steps)):
         if batch_id > evaluate_steps:
             break
@@ -76,20 +71,16 @@ def evaluate(runner, split=None, logger=None, global_step=0):
         with torch.no_grad():
             features = runner.upstream.model(wavs)
             features = runner.featurizer.model(wavs, features)
-            _ , out, labs = runner.downstream.model(
-                split,
-                features, *others,
-                records=records,
-                batch_id=batch_id,)
-            batch_ids.append(batch_id)
+            labels, phone_ids = others
+            features, labels, phone_ids, lengths = runner.downstream.model.process_input_forward(features, labels, phone_ids)
+            predicted = runner.downstream.model.model(features)
+            labels = labels*2-1
             
-            max_len_col = labs.shape[1]           
+            max_len_col = labels.shape[1]           
             summarisation_matrix_list = []
             phones_id_list = []
-            # element es phones array que es una sola frase o sea solo una tira
-            # quiero convertir esa tira en una matriz
+ 
             for element in others[1]:
-                # matrix deberia ser una matriz de #phones_id x max_len del batch
                 matrix, phonesids = get_summarisation_data(element, max_len_col)
                 summarisation_matrix_list.append(matrix)
                 phones_id_list.append(phonesids)
@@ -106,13 +97,12 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             mats2tensor = padded_sum_mats_list[0].T
             for m in padded_sum_mats_list[1:]:
                 mats2tensor = np.dstack((mats2tensor, m.T))
-            summarisation_batch = torch.from_numpy(mats2tensor.T)
-            
-            mask = abs(labs)
-            masked_outputs = out*mask
+            summarisation_batch = torch.from_numpy(mats2tensor.T).float()
+       
+            mask = abs(labels)
+            masked_outputs = predicted*mask
             logits_by_phone_1hot = torch.matmul(summarisation_batch, masked_outputs)
-            labels_by_phone_1hot = torch.sign(torch.matmul(summarisation_batch, labs))
-            embed()
+            labels_by_phone_1hot = torch.sign(torch.matmul(summarisation_batch, labels))
             frame_counts = torch.matmul(summarisation_batch, mask)
             frame_counts[frame_counts==0]=1
 
@@ -121,7 +111,6 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             #gops_by_phone = np.log(torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy())
             gops_by_phone = torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy()
             labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2).cpu().detach().numpy()
-
 
             df_batch_dict =  defaultdict(list)
             
@@ -141,12 +130,12 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             output.append(df_batch)
     
     df2eval = pd.concat(output)
-    joblib.dump(df2eval, output_dir + output_filename)
+    df2eval.to_pickle(Path(output_dir, output_filename))
 
+from pathlib import Path
 
-# 
-ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4/states-150000.ckpt'
-output_dir = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run4'
+ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run8/states-10000.ckpt'
+output_dir = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run8'
 output_filename  = 'data4eval.pickle'
 ckpt       = torch.load(ckpt_path, map_location='cpu')
 ckpt['Args'].device    = 'cpu'

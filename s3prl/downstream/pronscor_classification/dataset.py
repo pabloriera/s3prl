@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 #-------------#
 import torchaudio
-from .train_utils import get_phone_dictionaries
+from .train_utils import get_phone_dictionaries, NUM_PHONES
 
 
 HALF_BATCHSIZE_TIME = 2000
@@ -41,7 +41,7 @@ class PronscorDataset(Dataset):
         self.data_root = data_root
         self.phone_path = phone_path
         self.sample_rate = sample_rate
-        self.class_num = 40  # NOTE: pre-computed, should not need change
+        self.class_num = NUM_PHONES  # NOTE: pre-computed, should not need change
         #Create phone dictionaries
        #self._phone_sym2int_dict, self.phone_int2sym_dict, self.phone_int2node_dict = get_phone_dictionaries(phones_list_path)
 

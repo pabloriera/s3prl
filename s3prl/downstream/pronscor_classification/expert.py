@@ -46,7 +46,7 @@ class DownstreamExpert(nn.Module):
         self.objective = nn.BCEWithLogitsLoss()
 
         self.logging = os.path.join(expdir, 'log.log')
-        self.best = defaultdict(lambda: 0)
+        self.best = defaultdict(lambda: np.inf)
 
         # delattr(self, 'model')
         model_cls = eval(self.modelrc['select'])
@@ -132,6 +132,22 @@ class DownstreamExpert(nn.Module):
                 (inputs, pad_vec.repeat(1, label_len-input_len, 1)), dim=1)
         return inputs, labels
 
+    def process_input_forward(self, features, labels, phone_ids):
+        lengths = torch.LongTensor([len(l) for l in labels])
+
+        features = pad_sequence(features, batch_first=True)
+        phone_ids = pad_sequence(phone_ids, batch_first=True, padding_value=-100)
+        labels = pad_sequence(labels, batch_first=True, padding_value=-100).to(features.device)
+        features, labels = self._match_length(features, labels)
+
+        labels2d_list = []
+        for lab, phn in zip(labels, phone_ids):
+            labels_2darray = format_labels(lab, phn)
+            labels2d_list.append(labels_2darray)
+
+        labels = torch.stack(labels2d_list)
+
+        return features, labels, phone_ids, lengths
 
     # Interface
     def forward(self, split, features, labels, phone_ids, records, **kwargs):
@@ -166,30 +182,25 @@ class DownstreamExpert(nn.Module):
             loss:
                 the loss to be optimized, should not be detached
         """
-        lengths = torch.LongTensor([len(l) for l in labels])
 
-        features = pad_sequence(features, batch_first=True)
-        labels = pad_sequence(labels, batch_first=True, padding_value=-100).to(features.device)
-        features, labels = self._match_length(features, labels)
-        
-        labels = labels.detach().cpu().numpy()
-        phone_ids = pad_sequence(phone_ids, batch_first=True, padding_value=-100).detach().cpu().numpy()
-        predicted = self.model(features)
-        
-        labels2d_list = []
-        for lab, phn in zip(labels, phone_ids):
-            labels_2darray = format_labels(lab, phn)
-            labels2d_list.append(labels_2darray)
-
-        labels2tensor = labels2d_list[0].T
-        for l in labels2d_list[1:]:
-            labels2tensor = np.dstack((labels2tensor,l.T))
-        labels = torch.from_numpy(labels2tensor.T).to(features.device)
+        features, labels, phone_ids, lengths = self.process_input_forward( features, labels, phone_ids)
        
         phone_weights = self.phone_weights.to(features.device)
-        loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=self.npc, min_frame_count=0)
 
-        return loss, predicted, labels
+        predicted = self.model(features)
+
+        loss = criterion(predicted, labels, weights=phone_weights, norm_per_phone_and_class=self.npc, min_frame_count=0)
+        records['loss'] += [loss]
+
+        for pred, lab, l in zip(predicted, labels, lengths):
+            records['acc_pos'] += [(pred[:l][lab[:l]==1]>0.666).float().mean()]
+            m = (pred[:l][lab[:l]==0]<0.333).float().mean()
+            if not torch.isnan(m):
+                records['acc_neg'] += [m]
+            # records['sample_wise_metric'] += [torch.FloatTensor(utter_result).mean().item()]
+
+
+        return loss
         
 
     def log_records(self, split, records, logger, global_step, **kwargs):
@@ -211,17 +222,31 @@ class DownstreamExpert(nn.Module):
                 global_step in runner, which is helpful for Tensorboard logging
         """
         prefix = f'pronscor/{split}-'
-        average = torch.FloatTensor(records['acc']).mean().item()
+        average_loss = torch.FloatTensor(records['loss']).mean().item()
+        average_acc_pos = torch.FloatTensor(records['acc_pos']).mean().item()
+        average_acc_neg = torch.FloatTensor(records['acc_neg']).mean().item()
 
         logger.add_scalar(
-            f'{prefix}acc',
-            average,
+            f'{prefix}loss',
+            average_loss,
             global_step=global_step
         )
-        message = f'{prefix}|step:{global_step}|acc:{average}\n'
+        logger.add_scalar(
+            f'{prefix}acc_pos',
+            average_acc_pos,
+            global_step=global_step
+        )
+
+        logger.add_scalar(
+            f'{prefix}acc_neg',
+            average_acc_neg,
+            global_step=global_step
+        )
+
+        message = f'{prefix}|step:{global_step}|loss:{average_loss}\n'
         save_ckpt = []
-        if average > self.best[prefix]:
-            self.best[prefix] = average
+        if average_loss < self.best[prefix]:
+            self.best[prefix] = average_loss
             message = f'best|{message}'
             name = prefix.split('/')[-1].split('-')[0]
             save_ckpt.append(f'best-states-{name}.ckpt')

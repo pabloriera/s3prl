@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import yaml
 from IPython import embed
+NUM_PHONES = 40
 
 def format_labels(labels_array, phones_array):
     '''
@@ -12,8 +13,8 @@ def format_labels(labels_array, phones_array):
     '''
    
     pam = phones_array!=-100
-    x = np.zeros((len(phones_array),40))
-    x[np.arange(len(phones_array[pam])),phones_array[pam]]=labels_array[pam]*2-1
+    x = torch.ones((len(phones_array), NUM_PHONES), dtype=torch.float).to(labels_array.device)*0.5
+    x[torch.arange(len(phones_array[pam])),phones_array[pam]]=labels_array[pam].float()
     return x
 
 
@@ -78,12 +79,10 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
 
 def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, min_frame_count=0):
 
-    batch_labels_for_loss = (batch_labels+1)/2
-
-    loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels ==  1, batch_labels_for_loss, 
+    loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels ==  1, batch_labels, 
         phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
     
-    loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == -1, batch_labels_for_loss, 
+    loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels, 
         phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
     

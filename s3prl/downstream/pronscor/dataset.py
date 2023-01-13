@@ -20,7 +20,7 @@ TEST_SPEAKERS = []
 #################
 # Phone Dataset #
 #################
-
+NUM_PHONES = 40
 
 class PronscorDataset(Dataset):
 
@@ -30,7 +30,7 @@ class PronscorDataset(Dataset):
         self.data_root = data_root
         self.phone_path = phone_path
         self.sample_rate = sample_rate
-        self.class_num = 40  # NOTE: pre-computed, should not need change
+        self.class_num = NUM_PHONES  # NOTE: pre-computed, should not need change
 
         self.Y = {}
         phone_file = open(os.path.join(
