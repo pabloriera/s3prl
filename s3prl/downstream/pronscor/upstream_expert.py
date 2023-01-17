@@ -17,6 +17,7 @@ from .model import *
 EXAMPLE_FEAT_SEQLEN = 1000
 TIMIT_PHONE_CLASSES = 40
 TIMIT_LABEL_STRIDE = 160
+asd
 
 
 class UpstreamExpert(nn.Module):

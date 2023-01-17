@@ -1,22 +1,23 @@
+from pathlib import Path
+import argparse
 from collections import defaultdict
 import random
-import tempfile
 
 import torch
 import numpy as np
 from tqdm import tqdm
-from tensorboardX import SummaryWriter
+import yaml
 
 from s3prl.downstream.runner import Runner
 import torch
-import joblib
 
 import numpy as np
 import pandas as pd
 
 from IPython import embed
+from downstream.pronscor_classification.dataset import PronscorDataset
+from downstream.pronscor_classification.train_utils import process_input_forward
 
-from torch.nn.utils.rnn import pad_sequence
 
 def get_max_length(phone_ids_list):
     max_len = max(len(x) for x in phone_ids_list)
@@ -42,7 +43,7 @@ def get_summarisation_data(phones_array, max_len_col):
 
 def evaluate(runner, split=None, logger=None, global_step=0):
     """evaluate function will always be called on a single process even during distributed training"""
-    
+
     # When this member function is called directly by command line
     split = runner.args.evaluate_split
 
@@ -50,7 +51,7 @@ def evaluate(runner, split=None, logger=None, global_step=0):
     random.seed(runner.args.seed)
     np.random.seed(runner.args.seed)
     torch.manual_seed(runner.args.seed)
-   
+
     # record original train/eval states and set all models to eval
     trainings = []
     for entry in runner.all_entries:
@@ -58,6 +59,7 @@ def evaluate(runner, split=None, logger=None, global_step=0):
         entry.model.eval()
 
     # prepare data
+
     dataloader = runner.downstream.model.get_dataloader(split)
     evaluate_ratio = float(runner.config["runner"].get("evaluate_ratio", 1))
     evaluate_steps = round(len(dataloader) * evaluate_ratio)
@@ -72,53 +74,63 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             features = runner.upstream.model(wavs)
             features = runner.featurizer.model(wavs, features)
             labels, phone_ids = others
-            features, labels, phone_ids, lengths = runner.downstream.model.process_input_forward(features, labels, phone_ids)
+
+            num_phones = dataloader.dataset.class_num
+
+            features, labels, phone_ids, lengths = process_input_forward(
+                features, labels, phone_ids, num_phones)
             predicted = runner.downstream.model.model(features)
             labels = labels*2-1
-            
-            max_len_col = labels.shape[1]           
+
+            max_len_col = labels.shape[1]
             summarisation_matrix_list = []
             phones_id_list = []
- 
+
             for element in others[1]:
-                matrix, phonesids = get_summarisation_data(element, max_len_col)
+                matrix, phonesids = get_summarisation_data(
+                    element, max_len_col)
                 summarisation_matrix_list.append(matrix)
                 phones_id_list.append(phonesids)
 
             max_len_row = get_max_length(summarisation_matrix_list)
-            
+
             padded_sum_mats_list = []
             for summarisation_matrix in summarisation_matrix_list:
-                npad = [(0, max_len_row-len(summarisation_matrix)), (0,0)]
-                padded_summarisation_matrix = np.pad(summarisation_matrix, npad, 'constant', constant_values=0)
+                npad = [(0, max_len_row-len(summarisation_matrix)), (0, 0)]
+                padded_summarisation_matrix = np.pad(
+                    summarisation_matrix, npad, 'constant', constant_values=0)
                 padded_sum_mats_list.append(padded_summarisation_matrix)
-            
-            
+
             mats2tensor = padded_sum_mats_list[0].T
             for m in padded_sum_mats_list[1:]:
                 mats2tensor = np.dstack((mats2tensor, m.T))
             summarisation_batch = torch.from_numpy(mats2tensor.T).float()
-       
+
+            embed()
             mask = abs(labels)
             masked_outputs = predicted*mask
-            logits_by_phone_1hot = torch.matmul(summarisation_batch, masked_outputs)
-            labels_by_phone_1hot = torch.sign(torch.matmul(summarisation_batch, labels))
+            logits_by_phone_1hot = torch.matmul(
+                summarisation_batch, masked_outputs)
+            labels_by_phone_1hot = torch.sign(
+                torch.matmul(summarisation_batch, labels))
             frame_counts = torch.matmul(summarisation_batch, mask)
-            frame_counts[frame_counts==0]=1
+            frame_counts[frame_counts == 0] = 1
 
-            #le falta el log 
+            # le falta el log
             mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
             #gops_by_phone = np.log(torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy())
-            gops_by_phone = torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy()
-            labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2).cpu().detach().numpy()
+            gops_by_phone = torch.sum(
+                mean_logits_1hot, dim=2).cpu().detach().numpy()
+            labels_by_phone = torch.sum(
+                labels_by_phone_1hot, dim=2).cpu().detach().numpy()
 
-            df_batch_dict =  defaultdict(list)
-            
-            for i,phnlist in enumerate(phones_id_list):
+            df_batch_dict = defaultdict(list)
+
+            for i, phnlist in enumerate(phones_id_list):
                 phrase_phones = []
                 phrase_labels = []
-                phrase_gops =  []
-                for j,phone in enumerate(phnlist):
+                phrase_gops = []
+                for j, phone in enumerate(phnlist):
                     phrase_phones.append(phone)
                     phrase_labels.append(labels_by_phone[i][j])
                     phrase_gops.append(gops_by_phone[i][j])
@@ -128,20 +140,40 @@ def evaluate(runner, split=None, logger=None, global_step=0):
 
             df_batch = pd.DataFrame.from_dict(df_batch_dict)
             output.append(df_batch)
-    
-    df2eval = pd.concat(output)
-    df2eval.to_pickle(Path(output_dir, output_filename))
 
-from pathlib import Path
+    return pd.concat(output)
 
-ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run8/states-10000.ckpt'
-output_dir = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run8'
-output_filename  = 'data4eval.pickle'
-ckpt       = torch.load(ckpt_path, map_location='cpu')
-ckpt['Args'].device    = 'cpu'
-ckpt['Args'].init_ckpt = ckpt_path
-split = 'test'
 
-runner = Runner(ckpt['Args'], ckpt['Config'])
-evaluate(runner, split)
+def main(ckpt_path, split, config=None):
+    ckpt = torch.load(ckpt_path, map_location='cpu')
+    ckpt['Args'].device = 'cpu'
+    ckpt['Args'].init_ckpt = ckpt_path
 
+    runner = Runner(ckpt['Args'], ckpt['Config'])
+
+    if config is not None:
+        with open(config, 'r') as fp:
+            config = yaml.safe_load(fp)
+        datarc = config['downstream_expert']['datarc']
+        datarc['merge_phones'] = {4: 1}
+        runner.downstream.model.test_dataset = PronscorDataset(
+            'test', datarc['eval_batch_size'], **datarc)
+
+    df = evaluate(runner, split)
+
+    output_filename = 'data4eval.pickle'
+    output_dir = Path(ckpt_path).parent
+    df.to_pickle(Path(output_dir, output_filename))
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-c', '--ckpt', required=True)
+    parser.add_argument(
+        '-s', '--split', choices=['train', 'test', 'dev'], required=True)
+    parser.add_argument(
+        '--config', default=None)
+    args = parser.parse_args()
+
+    main(args.ckpt, args.split, args.config)

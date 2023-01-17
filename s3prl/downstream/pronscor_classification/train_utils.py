@@ -3,10 +3,74 @@ import torch
 import numpy as np
 import yaml
 from IPython import embed
+from torch.nn.utils.rnn import pad_sequence
 NUM_PHONES = 40
 
 
-def format_labels(labels_array, phones_array):
+def tile_representations(reps, factor):
+    """ 
+    Tile up the representations by `factor`.
+    Input - sequence of representations, shape: (batch_size, seq_len, feature_dim)
+    Output - sequence of tiled representations, shape: (batch_size, seq_len * factor, feature_dim)
+    """
+    assert len(reps.shape) == 3, 'Input argument `reps` has invalid shape: {}'.format(
+        reps.shape)
+    tiled_reps = reps.repeat(1, 1, factor)
+    tiled_reps = tiled_reps.reshape(
+        reps.size(0), reps.size(1)*factor, reps.size(2))
+    return tiled_reps
+
+
+def match_length(inputs, labels):
+    """
+    Since the upstream extraction process can sometimes cause a mismatch
+    between the seq lenth of inputs and labels:
+    - if len(inputs) > len(labels), we truncate the final few timestamp of inputs to match the length of labels
+    - if len(inputs) < len(labels), we duplicate the last timestep of inputs to match the length of labels
+    Note that the length of labels should never be changed.
+    """
+    input_len, label_len = inputs.size(1), labels.size(-1)
+
+    factor = int(round(label_len / input_len))
+    if factor > 1:
+        inputs = tile_representations(inputs, factor)
+        input_len = inputs.size(1)
+
+    if input_len > label_len:
+        inputs = inputs[:, :label_len, :]
+    elif input_len < label_len:
+        # (batch_size, 1, feature_dim)
+        pad_vec = inputs[:, -1, :].unsqueeze(1)
+        # (batch_size, seq_len, feature_dim), where seq_len == labels.size(-1)
+        inputs = torch.cat(
+            (inputs, pad_vec.repeat(1, label_len-input_len, 1)), dim=1)
+    return inputs, labels
+
+
+def process_input_forward(features, labels, phone_ids, num_phones):
+    """
+    TODO: Describeme
+    """
+    lengths = torch.LongTensor([len(l) for l in labels])
+
+    features = pad_sequence(features, batch_first=True)
+    phone_ids = pad_sequence(
+        phone_ids, batch_first=True, padding_value=-100)
+    labels = pad_sequence(labels, batch_first=True,
+                          padding_value=-100).to(features.device)
+    features, labels = match_length(features, labels)
+
+    labels2d_list = []
+    for lab, phn in zip(labels, phone_ids):
+        labels_2darray = format_labels(lab, phn, num_phones)
+        labels2d_list.append(labels_2darray)
+
+    labels = torch.stack(labels2d_list)
+
+    return features, labels, phone_ids, lengths
+
+
+def format_labels(labels_array, phones_array, num_phones):
     '''
     Function that receives two flat tensors of labels and phone ids
     and turns them into a quasi one hot encoded (x_X) 2d tensor with
@@ -14,7 +78,7 @@ def format_labels(labels_array, phones_array):
     '''
 
     pam = phones_array != -100
-    x = torch.ones((len(phones_array), NUM_PHONES),
+    x = torch.ones((len(phones_array), num_phones),
                    dtype=torch.float).to(labels_array.device)*0.5
     x[torch.arange(len(phones_array[pam])), phones_array[pam]
       ] = labels_array[pam].float()

@@ -34,10 +34,10 @@ downstream_expert:
     train_batch_size: 64 
     eval_batch_size: 64
     # data_root: /mnt/raid1/jazmin/data/l2arctic/
-    data_root: /media/secondary/Datasets/l2arctic_release_v5.0
-    # data_root: /media/secondary/Datasets/TIMIT/data
+    
+    train_data_root: /media/secondary/Datasets/TIMIT/data
+    eval_data_root: /media/secondary/Datasets/l2arctic_release_v5.0
     phone_path: './downstream/pronscor/data'
-    alignment_file: 'converted_aligned_phones.txt'
     bucket_file: './downstream/pronscor/data/len_for_bucket_arctic' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     # bucket_file: './downstream/pronscor/data_timit/len_for_bucket_timit' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     train_split_file: 'train_split.txt'

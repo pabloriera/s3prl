@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from .model import ConvBank
-from .dataset import PronscorDataset
+from ..pronscor_classsification.dataset import PronscorDataset
 from .text import load_text_encoder
 
 
@@ -177,11 +177,6 @@ class DownstreamExpert(nn.Module):
         features, labels = self._match_length(features, labels)
         predicted = self.model(features)
 
-        # if not self.training:
-        #     pass
-
-        # eval code
-
         if self.config_loss is None or self.config_loss == 'cross_entropy':
             # cause logits are in (batch, seq, class) and labels are in (batch, seq)
             # nn.CrossEntropyLoss expect to have (N, class) and (N,) as input
@@ -198,38 +193,38 @@ class DownstreamExpert(nn.Module):
                 records['sample_wise_metric'] += [
                     torch.FloatTensor(utter_result).mean().item()]
 
-        elif self.config_loss == 'ctc':
-            logits, log_probs_len = self.model(features, lengths)
+        # elif self.config_loss == 'ctc':
+        #     logits, log_probs_len = self.model(features, lengths)
 
-            log_probs = nn.functional.log_softmax(logits, dim=-1)
+        #     log_probs = nn.functional.log_softmax(logits, dim=-1)
 
-            loss = self.objective(
-                log_probs.transpose(0, 1),  # (N, T, C) -> (T, N, C)
-                labels,
-                log_probs_len,
-                labels_len,
-            )
-            records["loss"].append(loss.item())
+        #     loss = self.objective(
+        #         log_probs.transpose(0, 1),  # (N, T, C) -> (T, N, C)
+        #         labels,
+        #         log_probs_len,
+        #         labels_len,
+        #     )
+        #     records["loss"].append(loss.item())
 
-            pred_tokens = log_probs.argmax(dim=-1)
-            filtered_tokens = []
-            for pred_token in pred_tokens:
-                pred_token = pred_token.unique_consecutive()
-                filtered_token = [
-                    token
-                    for token in pred_token.tolist()
-                    if token != self.tokenizer.pad_idx and token != self.tokenizer.eos_idx
-                ]
-                filtered_tokens.append(filtered_token)
-            hypothesis = [
-                self.tokenizer.decode(h) for h in filtered_tokens
-            ]
-            groundtruth = [self.tokenizer.decode(g.tolist()) for g in labels]
+        #     pred_tokens = log_probs.argmax(dim=-1)
+        #     filtered_tokens = []
+        #     for pred_token in pred_tokens:
+        #         pred_token = pred_token.unique_consecutive()
+        #         filtered_token = [
+        #             token
+        #             for token in pred_token.tolist()
+        #             if token != self.tokenizer.pad_idx and token != self.tokenizer.eos_idx
+        #         ]
+        #         filtered_tokens.append(filtered_token)
+        #     hypothesis = [
+        #         self.tokenizer.decode(h) for h in filtered_tokens
+        #     ]
+        #     groundtruth = [self.tokenizer.decode(g.tolist()) for g in labels]
 
-            # store all text in a batch
-            records["hypothesis"] += hypothesis
-            records["groundtruth"] += groundtruth
-            records["filename"] += filenames
+        #     # store all text in a batch
+        #     records["hypothesis"] += hypothesis
+        #     records["groundtruth"] += groundtruth
+        #     records["filename"] += filenames
 
         return loss
 
