@@ -1,6 +1,12 @@
 from collections import defaultdict
 import random
-import tempfile
+import numpy as np
+from scipy.optimize import brentq
+from scipy import interpolate
+from IPython import embed
+from sklearn.metrics import roc_curve, auc
+import pandas as pd
+
 
 import torch
 import numpy as np
@@ -176,10 +182,9 @@ def evaluate(runner, split=None, logger=None, global_step=0):
             frame_counts = torch.matmul(summarisation_batch, mask)
             frame_counts[frame_counts==0]=1
 
-            #le falta el log 
             mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
-            gops_by_phone = np.log(torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy())
-            #gops_by_phone = torch.sum(mean_logits_1hot, dim=2).cpu().detach().numpy()
+            mean_logits_by_phone = torch.sum(mean_logits_1hot, dim=2)
+            gops_by_phone = torch.log(mean_logits_by_phone).cpu().detach().numpy()
             labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2).cpu().detach().numpy()
 
             df_batch_dict =  defaultdict(list)
@@ -216,7 +221,7 @@ def evaluate(runner, split=None, logger=None, global_step=0):
 
 from pathlib import Path
 
-ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run10_lasthiddenstate/states-10000.ckpt'
+ckpt_path  = '/mnt/raid1/jazmin/exps/s3prl/s3prl/result/downstream/run9_alphaft/best-states-dev.ckpt'
 output_dir = Path(ckpt_path).parent
 output_filename  = 'data_for_eval.pickle'
 ckpt  = torch.load(ckpt_path, map_location='cpu')

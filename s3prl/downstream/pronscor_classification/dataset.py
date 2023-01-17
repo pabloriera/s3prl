@@ -95,7 +95,6 @@ class PronscorDataset(Dataset):
         # Use bucketing to allow different batch sizes at run time
         self.X = []
         batch_x, batch_len = [], []
-        
         for x, x_len in zip(X, X_lens):
             if self._parse_x_name(x) in usage_list:
                 batch_x.append(x)

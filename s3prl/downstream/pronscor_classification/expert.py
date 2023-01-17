@@ -117,7 +117,6 @@ class DownstreamExpert(nn.Module):
         input_len, label_len = inputs.size(1), labels.size(-1)
 
         factor = int(round(label_len / input_len))
-        print(factor)
         if factor > 1:
             inputs = self._tile_representations(inputs, factor)
             input_len = inputs.size(1)
