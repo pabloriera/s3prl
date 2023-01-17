@@ -11,6 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 #-------------#
 import torchaudio
+
+# TODO: use phone dictionaries not fixed number
 from .train_utils import get_phone_dictionaries, NUM_PHONES
 
 
