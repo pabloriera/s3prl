@@ -35,7 +35,6 @@ class PronscorDataset(Dataset):
             bucket_file,
             sample_rate=16000,
             train_dev_seed=1337,
-            merge_phones=None,
             **kwargs):
 
         super(PronscorDataset, self).__init__()
@@ -48,17 +47,11 @@ class PronscorDataset(Dataset):
         # self._phone_sym2int_dict, self.phone_int2sym_dict, self.phone_int2node_dict = get_phone_dictionaries(phones_list_path)
 
         self.Y = {}
-        if merge_phones is None:
-            merge_phones = {}
-        else:
-            self.class_num -= len(merge_phones.keys())
-
         phone_file = open(os.path.join(
             phone_path, 'converted_aligned_phones.txt')).readlines()
         for line in phone_file:
             line = line.strip('\n').split(' ')
-            self.Y[line[0]] = [merge_phones.get(
-                int(p), int(p)) for p in line[1:]]
+            self.Y[line[0]] = [int(p) for p in line[1:]]
 
         self.L = {}
         label_file = open(os.path.join(

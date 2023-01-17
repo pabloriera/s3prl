@@ -124,7 +124,7 @@ class DownstreamExpert(nn.Module):
         """
 
         features, labels, phone_ids, lengths = process_input_forward(
-            features, labels, phone_ids, self.train_dataset.dataset.class_num)
+            features, labels, phone_ids, self.train_dataset.class_num)
 
         phone_weights = self.phone_weights.to(features.device)
 
