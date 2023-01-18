@@ -39,12 +39,8 @@ downstream_expert:
     eval_data_root: /media/secondary/Datasets/l2arctic_release_v5.0
     phone_path: './downstream/pronscor/data'
     bucket_file: './downstream/pronscor/data/len_for_bucket_arctic' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
-    # bucket_file: './downstream/pronscor/data_timit/len_for_bucket_timit' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
-    train_split_file: 'train_split.txt'
-    test_split_file: 'test_split.txt'
-    
+        
     sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
-    train_dev_seed: 1337
 
   modelrc:
     select: ConvBank

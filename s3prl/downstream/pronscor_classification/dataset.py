@@ -34,7 +34,6 @@ class PronscorDataset(Dataset):
             phone_path,
             bucket_file,
             sample_rate=16000,
-            train_dev_seed=1337,
             **kwargs):
 
         super(PronscorDataset, self).__init__()
@@ -63,14 +62,15 @@ class PronscorDataset(Dataset):
         if split == 'train':
             train_list = open(os.path.join(
                 phone_path, 'train_split.txt')).readlines()
-
             usage_list = [line.strip('\n') for line in train_list]
-        elif split == 'dev' or split == 'test':
+        elif split == 'dev':
+            dev_list = open(os.path.join(
+                phone_path, 'dev_split.txt')).readlines()
+            usage_list = [line.strip('\n') for line in dev_list]
+        elif split == 'test':
             test_list = open(os.path.join(
                 phone_path, 'test_split.txt')).readlines()
-            # Standard practice is to remove all "sa" sentences
-            usage_list = [
-                line.strip('\n') for line in test_list]
+            usage_list = [line.strip('\n') for line in test_list]
             # no separé un dev. ver si me lo cobra.
             # if split == 'dev':
             #    usage_list = [line for line in usage_list if not line.split(
@@ -84,12 +84,19 @@ class PronscorDataset(Dataset):
         usage_list = {line.strip('\n'): None for line in usage_list}
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
               ', number of data for ' + split + ': ' + str(len(usage_list)))
-        # embed()
         # Read table for bucketing
         assert os.path.isdir(
-            bucket_file), 'Please first run `preprocess/generate_len_for_bucket.py to get bucket file.'
-        table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv' if split ==
-                            'train' else 'TEST16k.csv')).sort_values(by=['length'], ascending=False)
+            bucket_file), f'Missing {bucket_file} Please first run `preprocess/generate_len_for_bucket.py` to get bucket file.'
+        if split == 'train':
+            table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv')).sort_values(
+                by=['length'], ascending=False)
+        elif split == 'dev':
+            table = pd.read_csv(os.path.join(bucket_file, 'DEV16k.csv')).sort_values(
+                by=['length'], ascending=False)
+        elif split == 'test':
+            table = pd.read_csv(os.path.join(bucket_file, 'TEST16k.csv')).sort_values(
+                by=['length'], ascending=False)
+
         X = table['file_path'].tolist()
         X_lens = table['length'].tolist()
 
