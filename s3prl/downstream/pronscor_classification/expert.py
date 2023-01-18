@@ -190,7 +190,7 @@ class DownstreamExpert(nn.Module):
             self.best[prefix] = average_loss
             message = f'best|{message}'
             name = prefix.split('/')[-1].split('-')[0]
-            save_ckpt.append(f'best-states-{name}-step_{global_step}.ckpt')
+            save_ckpt.append(f'best-states-{name}.ckpt')
         with open(self.logging, 'a') as f:
             f.write(message)
 
