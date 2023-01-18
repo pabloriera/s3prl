@@ -109,7 +109,9 @@ def main():
         SETS = ['train-clean-100', 'train-clean-360', 'train-other-500',
                 'dev-clean', 'dev-other', 'test-clean', 'test-other']
     elif 'epa' in args.input_data.lower():
-        SETS = ['TRAIN16k', 'TEST16k']
+        SETS = ['TRAIN16k','DEV16k','TEST16k']
+    elif 'arctic' in args.input_data.lower():
+        SETS = ['TRAIN16k','DEV16k','TEST16k']
     else:
         raise NotImplementedError
     # change the SETS list to match your dataset, for example:

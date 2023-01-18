@@ -157,6 +157,8 @@ def evaluate(runner, split=None):
                 features, labels, phone_ids, num_phones)
             predicted = runner.downstream.model.model(features)
             labels = labels*2-1
+            labels = labels.cpu()
+            predicted = predicted.cpu()
 
             max_len_col = labels.shape[1]
             summarisation_matrix_list = []
@@ -230,8 +232,8 @@ def evaluate(runner, split=None):
 
 def main(ckpt_path, split, config=None):
 
-    ckpt = torch.load(ckpt_path, map_location='cpu')
-    ckpt['Args'].device = 'cpu'
+    ckpt = torch.load(ckpt_path, map_location='cuda')
+    ckpt['Args'].device = 'cuda'
     ckpt['Args'].init_ckpt = ckpt_path
 
     runner = Runner(ckpt['Args'], ckpt['Config'])
