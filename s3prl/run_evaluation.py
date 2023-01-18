@@ -117,7 +117,7 @@ def get_summarisation_data(phones_array, max_len_col):
     return(res, phones)
 
 
-def evaluate(runner, split=None):
+def evaluate(runner, split=None, phone_db_map=None):
     """evaluate function will always be called on a single process even during distributed training"""
 
     # When this member function is called directly by command line
@@ -159,6 +159,11 @@ def evaluate(runner, split=None):
             labels = labels*2-1
             labels = labels.cpu()
             predicted = predicted.cpu()
+      
+            if phone_db_map is not None:
+                predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
+                labels = labels[:, :,
+                                phone_db_map['labels'].tolist()]
 
             max_len_col = labels.shape[1]
             summarisation_matrix_list = []
@@ -230,7 +235,7 @@ def evaluate(runner, split=None):
     return df2eval, metrics_table
 
 
-def main(ckpt_path, split, config=None):
+def main(ckpt_path, split, config=None, phone_db_map=None):
 
     ckpt = torch.load(ckpt_path, map_location='cuda')
     ckpt['Args'].device = 'cuda'
@@ -246,13 +251,24 @@ def main(ckpt_path, split, config=None):
         runner.downstream.model.test_dataset = PronscorDataset(
             'test', datarc['eval_batch_size'], **datarc)
 
-    df, metrics_table = evaluate(runner, split)
+    if phone_db_map is not None:
+        phone_db_map_df = pd.read_csv(
+            'downstream/pronscor_classification/phone-db-map.csv')
+
+        phone_db_map_df = phone_db_map_df[[phone_db_map[0], phone_db_map[1]]].applymap(
+            lambda x: int(x) if x.isnumeric() else np.nan).dropna().astype(int)
+        phone_db_map = {'predicted': phone_db_map_df[phone_db_map[0]],
+                        'labels': phone_db_map_df[phone_db_map[1]],
+                        }
+
+    df, metrics_table = evaluate(runner, split, phone_db_map=phone_db_map)
 
     output_filename = 'data4eval.pickle'
     output_dir = Path(ckpt_path).parent
 
     df.to_pickle(Path(output_dir, output_filename))
     output_filename = 'metrics_table.pickle'
+    print(metrics_table[metrics_table['phone_target'] == 'mean'].to_string())
     metrics_table.to_pickle(Path(output_dir, output_filename))
 
 
@@ -264,6 +280,9 @@ if __name__ == '__main__':
         '-s', '--split', choices=['train', 'test', 'dev'], required=True)
     parser.add_argument(
         '--config', default=None)
+    parser.add_argument(
+        '--phone-db-map', type=list,  default=None)
+
     args = parser.parse_args()
 
-    main(args.ckpt, args.split, args.config)
+    main(args.ckpt, args.split, args.config, args.phone_db_map)
