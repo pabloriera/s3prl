@@ -86,12 +86,6 @@ def get_metrics(df, cost_thrs=None):
         cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
         metrics[phone] = get_metrics_for_phone(df, phone, cost_thr=cost_thr)
 
-    # Add the mean metrics over all phones
-    metrics_to_average = [m for m in metrics[include_phones[0]].keys() if m not in [
-        "FPR", "FNR", "POS", "NEG"]]
-    metrics["mean"] = dict(
-        [(m, np.mean([metrics[p][m] for p in include_phones])) for m in metrics_to_average])
-
     return metrics
 
 
@@ -159,7 +153,7 @@ def evaluate(runner, split=None, phone_db_map=None):
             labels = labels*2-1
             labels = labels.cpu()
             predicted = predicted.cpu()
-      
+
             if phone_db_map is not None:
                 predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
                 labels = labels[:, :,
@@ -199,9 +193,8 @@ def evaluate(runner, split=None, phone_db_map=None):
             frame_counts[frame_counts == 0] = 1
 
             mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
-            mean_logits_by_phone = torch.sum(mean_logits_1hot, dim=2)
-            gops_by_phone = torch.log(
-                mean_logits_by_phone).cpu().detach().numpy()
+            gops_by_phone = torch.sum(
+                mean_logits_1hot, dim=2).cpu().detach().numpy()
             labels_by_phone = torch.sum(
                 labels_by_phone_1hot, dim=2).cpu().detach().numpy()
 
@@ -227,15 +220,22 @@ def evaluate(runner, split=None, phone_db_map=None):
     di = {-1: 0, 1: 1}
     df2eval = df2eval.replace({"label": di})
     df2eval['gop_scores'] = df2eval['gop_scores'].fillna(-5)
-
     metrics_dict = get_metrics(df2eval, cost_thrs=None)
-    metrics_table = pd.DataFrame.from_dict(
-        metrics_dict).T.reset_index().rename(columns={'index': 'phone_target'})
+
+    # metrics_dict["mean"] = dict(
+    #     [(m, np.nanmean([metrics_dict[p][m] for p in include_phones])) for m in metrics_to_average])
+
+    # # Add the mean metrics over all phones
+    # metrics_to_average = [m for m in metrics[include_phones[0]].keys() if m not in [
+    #     "FPR", "FNR", "POS", "NEG"]]
+
+    metrics_table = pd.DataFrame(metrics_dict).T
+    metrics_table.index.name = 'phone_automatic'
 
     return df2eval, metrics_table
 
 
-def main(ckpt_path, split, config=None, phone_db_map=None):
+def main(ckpt_path, split, config=None, phone_db_map=None, output_dir=None):
 
     ckpt = torch.load(ckpt_path, map_location='cuda')
     ckpt['Args'].device = 'cuda'
@@ -264,11 +264,17 @@ def main(ckpt_path, split, config=None, phone_db_map=None):
     df, metrics_table = evaluate(runner, split, phone_db_map=phone_db_map)
 
     output_filename = 'data_for_eval.pickle'
-    output_dir = Path(ckpt_path).parent
+
+    if output_dir is None:
+        output_dir = Path(ckpt_path).parent
+    elif not Path(output_dir).exists():
+        Path(output_dir).mkdir(exist_ok=True)
 
     df.to_pickle(Path(output_dir, output_filename))
+
     output_filename = 'metrics_table.pickle'
-    print(metrics_table[metrics_table['phone_target'] == 'mean'].to_string())
+    print(output_dir)
+    print(metrics_table.mean(numeric_only=None).to_string())
     metrics_table.to_pickle(Path(output_dir, output_filename))
 
 
@@ -281,8 +287,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--config', default=None)
     parser.add_argument(
-        '--phone-db-map', type=list,  default=None)
+        '--phone-db-map', nargs="+",  default=None)
+    parser.add_argument(
+        '--output-dir', default=None)
 
     args = parser.parse_args()
 
-    main(args.ckpt, args.split, args.config, args.phone_db_map)
+    main(args.ckpt, args.split, args.config,
+         args.phone_db_map, args.output_dir)
