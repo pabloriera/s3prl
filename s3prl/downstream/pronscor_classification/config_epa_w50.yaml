@@ -36,7 +36,7 @@ downstream_expert:
     phone_path: './downstream/pronscor_classification/data_epa'
     #phone_list: 'pronscor_class/data/phones-list.txt'
     npc: False 
-    phone_weights: './downstream/pronscor_classification/data_epa/phone_weights_all_1.yaml'
+    phone_weights: './downstream/pronscor_classification/data_epa/phone_weights_50.yaml'
     bucket_file: './downstream/pronscor_classification/data_epa/len_for_bucket' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
 

@@ -263,7 +263,7 @@ def main(ckpt_path, split, config=None, phone_db_map=None):
 
     df, metrics_table = evaluate(runner, split, phone_db_map=phone_db_map)
 
-    output_filename = 'data4eval.pickle'
+    output_filename = 'data_for_eval.pickle'
     output_dir = Path(ckpt_path).parent
 
     df.to_pickle(Path(output_dir, output_filename))
