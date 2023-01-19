@@ -28,9 +28,13 @@ class DownstreamExpert(nn.Module):
         self.upstream_dim = upstream_dim
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
-        self.phone_weights = get_phone_weights_as_torch(
+        if 'phone_weights' in self.datarc:
+            self.phone_weights = get_phone_weights_as_torch(
             self.datarc['phone_weights'])
+        else:
+            self.phone_weights = None
         self.npc = self.datarc['npc']
+        
 
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
@@ -126,7 +130,10 @@ class DownstreamExpert(nn.Module):
         features, labels, phone_ids, lengths = process_input_forward(
             features, labels, phone_ids, self.train_dataset.class_num)
 
-        phone_weights = self.phone_weights.to(features.device)
+        if self.phone_weights is not None:
+            phone_weights = self.phone_weights.to(features.device)
+        else:
+            phone_weights = None
 
         predicted = self.model(features)
 

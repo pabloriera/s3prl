@@ -135,23 +135,27 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
         if min_frame_count > 0:
             # Set to 0 the weights for the phones with too few cases in this batch
             weights[:, :, frame_count < min_frame_count] = 0.0
-
     loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none', weight=weights)
 
     return loss_fn(outputs, labels), torch.sum(weights)
 
 
 def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, min_frame_count=0):
+  
+    if weights is None and norm_per_phone_and_class is None:
+        mask = batch_labels!=0.5
+        loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none', weight=mask)
+        total_loss = loss_fn(batch_outputs, batch_labels).sum()/mask.sum()
+    else:
+        loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels == 1, batch_labels,
+                                                phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
-    loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels == 1, batch_labels,
-                                               phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
+        loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels,
+                                                phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
-    loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels,
-                                               phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
+        total_loss = (loss_pos + loss_neg).sum()
 
-    total_loss = (loss_pos + loss_neg).sum()
-
-    if not norm_per_phone_and_class:
+        # if not norm_per_phone_and_class:
         total_weights = sum_weights_pos + sum_weights_neg
         total_loss /= total_weights
 
