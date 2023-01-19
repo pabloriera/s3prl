@@ -1,7 +1,7 @@
 runner:
   total_steps: 10000
   gradient_clipping: 1
-  gradient_accumulate_steps: 2
+  gradient_accumulate_steps: 4
 
   log_step: 200
   eval_step: 200
@@ -30,7 +30,7 @@ optimizer:
 downstream_expert:
   datarc:
     num_workers: 12
-    train_batch_size: 32
+    train_batch_size: 16
     eval_batch_size: 64
     data_root: ./downstream/pronscor_classification/data_epa/EpaDB
     phone_path: './downstream/pronscor_classification/data_epa'
