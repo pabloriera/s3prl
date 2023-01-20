@@ -8,6 +8,7 @@ from scipy import interpolate
 from IPython import embed
 from sklearn.metrics import roc_curve, auc
 import pandas as pd
+from sklearn.metrics import precision_recall_curve, precision_recall_fscore_support
 
 
 import torch
@@ -26,10 +27,22 @@ from downstream.pronscor_classification.dataset import PronscorDataset
 from downstream.pronscor_classification.train_utils import process_input_forward
 
 
-def get_metrics_for_phone(df, phone, cost_fp=0.5, cost_thr=None):
-    sel = df.loc[(df['phone_automatic'] == int(phone))]
-    scores = np.array(sel.gop_scores)
-    labels = np.array(sel.label)
+def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
+    scores = np.array(df.gop_scores)
+    labels = np.array(df.label)
+
+    if f1_thr is None:
+        precision, recall, f1_thr = precision_recall_curve(
+            df['label'], df['gop_scores'])
+
+        numerator = 2 * recall * precision
+        denom = recall + precision
+        f1_scores = np.divide(
+            numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
+    else:
+        precision, recall, f1_scores, _ = precision_recall_fscore_support(
+            df['label'], df['gop_scores'] > f1_thr, average='binary')
+
     fpr, tpr, thr = roc_curve(labels, scores)
     fnr = 1-tpr
 
@@ -57,36 +70,45 @@ def get_metrics_for_phone(df, phone, cost_fp=0.5, cost_thr=None):
     aucv = auc(fpr, tpr)
     eerv = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
 
-    metrics = {"1-AUC": 1-aucv,
-               "EER": eerv,
-               "MinCost": min_cost,
-               "MinCostThr": min_cost_thr,
-               "FPR4MinCost": min_cost_fpr,
-               "FNR4MinCost": min_cost_fnr,
-               "ActCost": act_cost,
-               "FPR4ActCost": act_cost_fpr,
-               "FNR4ActCost": act_cost_fnr,
-               "POS_COUNT": np.sum(labels),
-               "NEG_COUNT": len(labels)-np.sum(labels),
-               "FPR": fpr,
-               "FNR": fnr,
-               "POS": scores[labels == 1],
-               "NEG": scores[labels == 0]
-               }
+    metrics = {
+        "1-AUC": 1-aucv,
+        "EER": eerv,
+        "MinCost": min_cost,
+        "MinCostThr": min_cost_thr,
+        "FPR4MinCost": min_cost_fpr,
+        "FNR4MinCost": min_cost_fnr,
+        "ActCost": act_cost,
+        "FPR4ActCost": act_cost_fpr,
+        "FNR4ActCost": act_cost_fnr,
+        "POS_COUNT": np.sum(labels),
+        "NEG_COUNT": len(labels)-np.sum(labels),
+        "FPR": fpr,
+        "FNR": fnr,
+        "POS": scores[labels == 1],
+        "NEG": scores[labels == 0],
+        "Recall": recall,
+        "Precision": precision,
+        "F1Score": f1_scores,
+        "F1Thr": f1_thr
+    }
 
     return metrics
 
 
-def get_metrics(df, cost_thrs=None):
+def get_metrics(df, cost_thrs=None, f1_thr=None):
 
     metrics = dict()
-    include_phones = df['phone_automatic'].unique()
 
-    for phone in include_phones:
+    metrics['all'] = compute_metrics(df, cost_thr=None, f1_thr=f1_thr)
+
+    for phone, g in df.groupby('phone_automatic'):
         cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
-        metrics[phone] = get_metrics_for_phone(df, phone, cost_thr=cost_thr)
+        metrics[phone] = compute_metrics(g, cost_thr=cost_thr, f1_thr=f1_thr)
 
-    return metrics
+    metrics_table = pd.DataFrame(metrics).T
+    metrics_table.index.name = 'phone_automatic'
+
+    return metrics_table
 
 
 def get_max_length(phone_ids_list):
@@ -113,9 +135,6 @@ def get_summarisation_data(phones_array, max_len_col):
 
 def evaluate(runner, split=None, phone_db_map=None):
     """evaluate function will always be called on a single process even during distributed training"""
-
-    # When this member function is called directly by command line
-    split = runner.args.evaluate_split
 
     # fix seed to guarantee the same evaluation protocol across steps
     random.seed(runner.args.seed)
@@ -163,6 +182,7 @@ def evaluate(runner, split=None, phone_db_map=None):
             summarisation_matrix_list = []
             phones_id_list = []
 
+            # TODO: clean phones in other[1] with phone_db_map if exists
             for element in others[1]:
                 matrix, phonesids = get_summarisation_data(
                     element, max_len_col)
@@ -215,41 +235,27 @@ def evaluate(runner, split=None, phone_db_map=None):
             df_batch = pd.DataFrame.from_dict(df_batch_dict)
             output.append(df_batch)
 
-    df2eval = pd.concat(output)
-    df2eval = df2eval[df2eval['label'] != 0]
+    df_scores = pd.concat(output)
+    # TODO: check
+    df_scores = df_scores[df_scores['label'] != 0]
     di = {-1: 0, 1: 1}
-    df2eval = df2eval.replace({"label": di})
-    df2eval['gop_scores'] = df2eval['gop_scores'].fillna(-5)
-    metrics_dict = get_metrics(df2eval, cost_thrs=None)
+    df_scores = df_scores.replace({"label": di})
 
-    # metrics_dict["mean"] = dict(
-    #     [(m, np.nanmean([metrics_dict[p][m] for p in include_phones])) for m in metrics_to_average])
-
-    # # Add the mean metrics over all phones
-    # metrics_to_average = [m for m in metrics[include_phones[0]].keys() if m not in [
-    #     "FPR", "FNR", "POS", "NEG"]]
-
-    metrics_table = pd.DataFrame(metrics_dict).T
-    metrics_table.index.name = 'phone_automatic'
-
-    return df2eval, metrics_table
+    return df_scores
 
 
-def main(ckpt_path, split, config=None, phone_db_map=None, output_dir=None):
+def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
+    if torch.cuda.is_available():
+        device = 'cuda'
+    else:
+        device = 'cpu'
+        torch.multiprocessing.set_sharing_strategy('file_system')
 
-    ckpt = torch.load(ckpt_path, map_location='cuda')
-    ckpt['Args'].device = 'cuda'
+    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt['Args'].device = device
     ckpt['Args'].init_ckpt = ckpt_path
 
     runner = Runner(ckpt['Args'], ckpt['Config'])
-
-    if config is not None:
-        with open(config, 'r') as fp:
-            config = yaml.safe_load(fp)
-        datarc = config['downstream_expert']['datarc']
-        datarc['merge_phones'] = {4: 1}
-        runner.downstream.model.test_dataset = PronscorDataset(
-            'test', datarc['eval_batch_size'], **datarc)
 
     if phone_db_map is not None:
         phone_db_map_df = pd.read_csv(
@@ -261,21 +267,46 @@ def main(ckpt_path, split, config=None, phone_db_map=None, output_dir=None):
                         'labels': phone_db_map_df[phone_db_map[1]],
                         }
 
-    df, metrics_table = evaluate(runner, split, phone_db_map=phone_db_map)
+    dev_best_f1_thr = None
+    for split in splits:
+        print("Split", split)
 
-    output_filename = 'data_for_eval.pickle'
+        if config is not None:
+            with open(config, 'r') as fp:
+                config_ = yaml.safe_load(fp)
+            datarc = config_['downstream_expert']['datarc']
+            datarc['merge_phones'] = {4: 1}
+            ds = PronscorDataset(split, datarc['eval_batch_size'], **datarc)
+            setattr(runner.downstream.model, f'{split}_dataset', ds)
 
-    if output_dir is None:
-        output_dir = Path(ckpt_path).parent
-    elif not Path(output_dir).exists():
-        Path(output_dir).mkdir(exist_ok=True)
+        df_scores = evaluate(runner, split, phone_db_map=phone_db_map)
 
-    df.to_pickle(Path(output_dir, output_filename))
+        if split == 'dev':
+            metrics_table = get_metrics(
+                df_scores, cost_thrs=None, f1_thr=None)
+            ix = np.nanargmax(metrics_table.loc['all']['F1Score'])
+            dev_best_f1_thr = metrics_table.loc['all']['F1Thr'][ix]
+            print('Dev Best threshold: ', dev_best_f1_thr)
+            print('Dev Best F1-Score: ',
+                  np.nanmax(metrics_table.loc['all']['F1Score']))
+        elif split == 'test':
+            metrics_table = get_metrics(
+                df_scores, cost_thrs=None, f1_thr=dev_best_f1_thr)
 
-    output_filename = 'metrics_table.pickle'
-    print(output_dir)
-    print(metrics_table.mean(numeric_only=None).to_string())
-    metrics_table.to_pickle(Path(output_dir, output_filename))
+            print('Test F1-Score: ', metrics_table.loc['all']['F1Score'])
+
+        output_filename = f'data_for_eval_{split}.pickle'
+
+        if output_dir is None:
+            output_dir = Path(ckpt_path).parent
+        elif not Path(output_dir).exists():
+            Path(output_dir).mkdir(exist_ok=True)
+        df_scores.to_pickle(Path(output_dir, output_filename))
+
+        output_filename = f'metrics_table_{split}.pickle'
+        print("Output", output_dir)
+        print(metrics_table.loc['all'].to_string())
+        metrics_table.to_pickle(Path(output_dir, output_filename))
 
 
 if __name__ == '__main__':
@@ -283,7 +314,7 @@ if __name__ == '__main__':
     parser.add_argument(
         '-c', '--ckpt', required=True)
     parser.add_argument(
-        '-s', '--split', choices=['train', 'test', 'dev'], required=True)
+        '-s', '--split',  nargs="+",  choices=['train', 'test', 'dev'], required=True)
     parser.add_argument(
         '--config', default=None)
     parser.add_argument(
