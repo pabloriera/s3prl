@@ -47,7 +47,7 @@ def match_length(inputs, labels):
     return inputs, labels
 
 
-def process_input_forward(features, labels, phone_ids, num_phones):
+def process_input_forward(features, labels, phone_ids, num_phones, silence_id=0):
     """
     TODO: Describeme
     """
@@ -55,9 +55,9 @@ def process_input_forward(features, labels, phone_ids, num_phones):
 
     features = pad_sequence(features, batch_first=True)
     phone_ids = pad_sequence(
-        phone_ids, batch_first=True, padding_value=-100)
+        phone_ids, batch_first=True, padding_value=silence_id)
     labels = pad_sequence(labels, batch_first=True,
-                          padding_value=-100).to(features.device)
+                          padding_value=0).to(features.device)
     features, labels = match_length(features, labels)
 
     labels2d_list = []
@@ -77,11 +77,11 @@ def format_labels(labels_array, phones_array, num_phones):
     labels in the frames of each target phone in the phrase
     '''
 
-    pam = phones_array != -100
-    x = torch.ones((len(phones_array), num_phones),
-                   dtype=torch.float).to(labels_array.device)*0.5
-    x[torch.arange(len(phones_array[pam])), phones_array[pam]
-      ] = labels_array[pam].float()
+    x = torch.zeros((len(phones_array), num_phones),
+                    dtype=torch.float).to(labels_array.device)
+    x[torch.arange(len(phones_array)), phones_array
+      ] = labels_array.float()
+
     return x
 
 
@@ -141,17 +141,17 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
 
 
 def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, min_frame_count=0):
-  
+
     if weights is None and norm_per_phone_and_class is None:
-        mask = batch_labels!=0.5
+        mask = batch_labels != 0.5
         loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none', weight=mask)
         total_loss = loss_fn(batch_outputs, batch_labels).sum()/mask.sum()
     else:
         loss_pos, sum_weights_pos = calculate_loss(batch_outputs, batch_labels == 1, batch_labels,
-                                                phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
+                                                   phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
         loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels,
-                                                phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
+                                                   phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
         total_loss = (loss_pos + loss_neg).sum()
 

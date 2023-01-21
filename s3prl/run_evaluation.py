@@ -111,29 +111,19 @@ def get_metrics(df, cost_thrs=None, f1_thr=None):
     return metrics_table
 
 
-def get_max_length(phone_ids_list):
-    max_len = max(len(x) for x in phone_ids_list)
-    return max_len
-
-
-def get_summarisation_data(phones_array, max_len_col):
-    phones_array = phones_array.cpu().detach().numpy()
-    index = np.where(phones_array[:-1] != phones_array[1:])[0]
-    rows = []
-    phones = []
+def get_phones_masks(phone_list):
+    n_frames = len(phone_list)
+    index = torch.where(phone_list[:-1] != phone_list[1:])[0]
+    index = torch.hstack((index, torch.tensor(n_frames-1)))
     start = 0
-    for i in index:
-        tmp_row = np.zeros(max_len_col)
-        end = i
-        tmp_row[start:end+1] = 1
-        rows.append(tmp_row)
-        phones.append(phones_array[i])
+    res = torch.zeros((len(index), n_frames))
+    for i, end in enumerate(index):
+        res[i, start:end+1] = 1
         start = end+1
-    res = np.stack(rows, axis=0)
-    return(res, phones)
+    return res, phone_list[index]
 
 
-def evaluate(runner, split=None, phone_db_map=None):
+def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
     """evaluate function will always be called on a single process even during distributed training"""
 
     # fix seed to guarantee the same evaluation protocol across steps
@@ -162,84 +152,85 @@ def evaluate(runner, split=None, phone_db_map=None):
         with torch.no_grad():
             features = runner.upstream.model(wavs)
             features = runner.featurizer.model(wavs, features)
-            labels, phone_ids = others
+            labels, phone_ids = others.copy()
 
             num_phones = dataloader.dataset.class_num
 
             features, labels, phone_ids, lengths = process_input_forward(
-                features, labels, phone_ids, num_phones)
+                features, labels, phone_ids, num_phones, silence_id=silence_id)
             predicted = runner.downstream.model.model(features)
-            labels = labels*2-1
-            labels = labels.cpu()
-            predicted = predicted.cpu()
+
+            # labels = labels.cpu()
+            # predicted = predicted.cpu()
 
             if phone_db_map is not None:
                 predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
                 labels = labels[:, :,
                                 phone_db_map['labels'].tolist()]
 
-            max_len_col = labels.shape[1]
-            summarisation_matrix_list = []
+            phone_masks_list = []
             phones_id_list = []
 
             # TODO: clean phones in other[1] with phone_db_map if exists
-            for element in others[1]:
-                matrix, phonesids = get_summarisation_data(
-                    element, max_len_col)
-                summarisation_matrix_list.append(matrix)
+            for phone_list in phone_ids:
+                phone_mask, phonesids = get_phones_masks(phone_list)
+                phone_masks_list.append(phone_mask)
                 phones_id_list.append(phonesids)
 
-            max_len_row = get_max_length(summarisation_matrix_list)
+            max_phone_count = max(len(x) for x in phones_id_list)
+            n_frames = labels.shape[1]
+            summarisation_mask = torch.zeros(
+                (labels.shape[0], max_phone_count, n_frames), device=predicted.device)
 
-            padded_sum_mats_list = []
-            for summarisation_matrix in summarisation_matrix_list:
-                npad = [(0, max_len_row-len(summarisation_matrix)), (0, 0)]
-                padded_summarisation_matrix = np.pad(
-                    summarisation_matrix, npad, 'constant', constant_values=0)
-                padded_sum_mats_list.append(padded_summarisation_matrix)
+            for i, phone_mask in enumerate(phone_masks_list):
+                summarisation_mask[i, :phone_mask.shape[0], :] = phone_mask
 
-            mats2tensor = padded_sum_mats_list[0].T
-            for m in padded_sum_mats_list[1:]:
-                mats2tensor = np.dstack((mats2tensor, m.T))
-            summarisation_batch = torch.from_numpy(mats2tensor.T).float()
+            # padded_sum_mats_list = []
+            # for summarisation_matrix in phone_masks_list:
+            #     npad = [(0, max_phone_count-len(summarisation_matrix)), (0, 0)]
+            #     padded_summarisation_matrix = np.pad(
+            #         summarisation_matrix, npad, 'constant', constant_values=0)
+            #     padded_sum_mats_list.append(padded_summarisation_matrix)
+
+            # mats2tensor = padded_sum_mats_list[0].T
+            # for m in padded_sum_mats_list[1:]:
+            #     mats2tensor = np.dstack((mats2tensor, m.T))
+            # summarisation_batch = torch.from_numpy(mats2tensor.T).float()
 
             mask = abs(labels)
             masked_outputs = predicted*mask
             logits_by_phone_1hot = torch.matmul(
-                summarisation_batch, masked_outputs)
+                summarisation_mask, masked_outputs)
             labels_by_phone_1hot = torch.sign(
-                torch.matmul(summarisation_batch, labels))
-            frame_counts = torch.matmul(summarisation_batch, mask)
+                torch.matmul(summarisation_mask, labels))
+            frame_counts = torch.matmul(summarisation_mask, mask)
             frame_counts[frame_counts == 0] = 1
 
             mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
             gops_by_phone = torch.sum(
-                mean_logits_1hot, dim=2).cpu().detach().numpy()
+                mean_logits_1hot, dim=2)
             labels_by_phone = torch.sum(
-                labels_by_phone_1hot, dim=2).cpu().detach().numpy()
+                labels_by_phone_1hot, dim=2)
 
             df_batch_dict = defaultdict(list)
 
-            for i, phnlist in enumerate(phones_id_list):
-                phrase_phones = []
-                phrase_labels = []
-                phrase_gops = []
-                for j, phone in enumerate(phnlist):
-                    phrase_phones.append(phone)
-                    phrase_labels.append(int(labels_by_phone[i][j]))
-                    phrase_gops.append(gops_by_phone[i][j])
-                df_batch_dict['phone_automatic'] += phrase_phones
-                df_batch_dict['gop_scores'] += phrase_gops
-                df_batch_dict['label'] += phrase_labels
+            for i, (phnlist, labs, gops) in enumerate(zip(phones_id_list, labels_by_phone, gops_by_phone)):
+                phrase_labels = labs[:len(phnlist)]
+                phrase_gops = gops[:len(phnlist)]
+                df_batch_dict['phone_automatic'] += phnlist.tolist()
+                df_batch_dict['gop_scores'] += phrase_gops.tolist()
+                df_batch_dict['label'] += phrase_labels.tolist()
 
-            df_batch = pd.DataFrame.from_dict(df_batch_dict)
+            df_batch = pd.DataFrame(df_batch_dict)
+            assert df_batch[df_batch['phone_automatic']
+                            == 0]['gop_scores'].sum() == 0
             output.append(df_batch)
 
     df_scores = pd.concat(output)
-    # TODO: check
-    df_scores = df_scores[df_scores['label'] != 0]
-    di = {-1: 0, 1: 1}
-    df_scores = df_scores.replace({"label": di})
+    df_scores = df_scores[df_scores['phone_automatic'] != 0]
+    df_scores['label'] = (df_scores['label']+1)/2
+
+    assert (df_scores['label'] == 0.5).sum() == 0
 
     return df_scores
 
@@ -257,6 +248,7 @@ def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
 
     runner = Runner(ckpt['Args'], ckpt['Config'])
 
+    silence_id = 0
     if phone_db_map is not None:
         phone_db_map_df = pd.read_csv(
             'downstream/pronscor_classification/phone-db-map.csv')
@@ -266,6 +258,8 @@ def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
         phone_db_map = {'predicted': phone_db_map_df[phone_db_map[0]],
                         'labels': phone_db_map_df[phone_db_map[1]],
                         }
+        # TODO: silence_id
+        assert False
 
     dev_best_f1_thr = None
     for split in splits:
@@ -279,7 +273,8 @@ def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
             ds = PronscorDataset(split, datarc['eval_batch_size'], **datarc)
             setattr(runner.downstream.model, f'{split}_dataset', ds)
 
-        df_scores = evaluate(runner, split, phone_db_map=phone_db_map)
+        df_scores = evaluate(
+            runner, split, phone_db_map=phone_db_map, silence_id=silence_id)
 
         if split == 'dev':
             metrics_table = get_metrics(

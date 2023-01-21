@@ -57,7 +57,7 @@ class PronscorDataset(Dataset):
             phone_path, 'converted_aligned_labels.txt')).readlines()
         for line in label_file:
             line = line.strip('\n').split(' ')
-            self.L[line[0]] = [(float(l)+1)/2 for l in line[1:]]
+            self.L[line[0]] = [int(l) for l in line[1:]]
 
         if split == 'train':
             train_list = open(os.path.join(

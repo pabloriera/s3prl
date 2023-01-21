@@ -30,11 +30,10 @@ class DownstreamExpert(nn.Module):
         self.modelrc = downstream_expert['modelrc']
         if 'phone_weights' in self.datarc:
             self.phone_weights = get_phone_weights_as_torch(
-            self.datarc['phone_weights'])
+                self.datarc['phone_weights'])
         else:
             self.phone_weights = None
         self.npc = self.datarc['npc']
-        
 
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
@@ -136,6 +135,9 @@ class DownstreamExpert(nn.Module):
             phone_weights = None
 
         predicted = self.model(features)
+
+        # Changes -1, 0, 1 labels to 0, 0.5, 1 for Cross Entropy
+        labels = (labels+1)/2
 
         loss = criterion(predicted, labels, weights=phone_weights,
                          norm_per_phone_and_class=self.npc, min_frame_count=0)
