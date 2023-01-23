@@ -90,8 +90,13 @@ class Runner():
     def __init__(self, args, config):
         self.args = args
         self.config = config
-        self.init_ckpt = torch.load(
-            self.args.init_ckpt, map_location='cpu') if self.args.init_ckpt else {}
+        if self.args.init_ckpt:
+            self.init_ckpt = torch.load(
+                self.args.init_ckpt, map_location='cpu')
+            self.init_ckpt['Epoch'] = 0
+            self.init_ckpt['Step'] = 0
+        else:
+            self.init_ckpt = {}
 
         self.upstream = self._get_upstream()
         self.featurizer = self._get_featurizer()

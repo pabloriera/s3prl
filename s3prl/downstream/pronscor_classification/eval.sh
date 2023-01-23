@@ -1,3 +1,19 @@
+python run_evaluation.py -c result/downstream/epa_distilhubert_base/best-states-dev.ckpt  -s dev test
+python run_evaluation.py -c result/downstream/epa_hubert/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_hubert_testigo/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_hubert_testigo_clean/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_unispeech_sat_base_plus/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_wav2vec2/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_wavlm/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/epa_xls_r_300m/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_distilhubert_base/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_hubert/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_unispeech_sat_base_plus/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_wav2vec2/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_wavlm/best-states-dev.ckpt -s dev test
+python run_evaluation.py -c result/downstream/l2arctic_xls_r_300m/best-states-dev.ckpt -s dev test
+
+
 python run_evaluation.py -c result/downstream/epa_hubert/best-states-dev.ckpt -s dev test 
 python run_evaluation.py -c result/downstream/epa_hubert_ft/best-states-dev.ckpt -s dev test 
 python run_evaluation.py -c result/downstream/epa_wav2vec2/best-states-dev.ckpt -s dev test 
