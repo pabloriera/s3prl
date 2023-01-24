@@ -3,8 +3,87 @@ import torch
 import numpy as np
 import yaml
 from IPython import embed
+from sklearn.metrics import roc_curve, auc
+from scipy.optimize import brentq
+from sklearn.metrics import precision_recall_curve, precision_recall_fscore_support
+from scipy import interpolate
 from torch.nn.utils.rnn import pad_sequence
 NUM_PHONES = 40
+
+
+def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
+    scores = np.array(df.gop_scores)
+    labels = np.array(df.label)
+
+    if f1_thr is None:
+        precision, recall, f1_thr = precision_recall_curve(
+            df['label'], df['gop_scores'])
+
+        numerator = 2 * recall * precision
+        denom = recall + precision
+        f1_scores = np.divide(
+            numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
+    else:
+        precision, recall, f1_scores, _ = precision_recall_fscore_support(
+            df['label'], df['gop_scores'] > f1_thr, average='binary')
+        # TR = ((df['gop_scores']<0) & (df['label']==0)).sum()
+        # FR = ((df['gop_scores']<0) & (df['label']==1)).sum()
+        # FA = ((df['gop_scores']>0) & (df['label']==0)).sum()
+
+        # precision = TR/(TR+FR)
+        # recall = TR/(TR+FA)
+        # f1_scores = 2*(precision*recall)/(precision+recall)
+
+    fpr, tpr, thr = roc_curve(labels, scores)
+    fnr = 1-tpr
+
+    # Use the best (cheating) threshold to get the min_cost
+    cost_normalizer = min(cost_fp, 1.0)
+    cost = (cost_fp * fpr + fnr)/cost_normalizer
+    min_cost_idx = np.argmin(cost)
+    min_cost_thr = thr[min_cost_idx]
+    min_cost = cost[min_cost_idx]
+    min_cost_fpr = fpr[min_cost_idx]
+    min_cost_fnr = fnr[min_cost_idx]
+
+    if cost_thr is not None:
+        det_pos = labels[scores > cost_thr]
+        det_neg = labels[scores <= cost_thr]
+        act_cost_fpr = np.sum(det_pos == 0)/np.sum(labels == 0)
+        act_cost_fnr = np.sum(det_neg == 1)/np.sum(labels == 1)
+        act_cost = (cost_fp * act_cost_fpr + act_cost_fnr)/cost_normalizer
+#        print(min_cost, act_cost, cost_thr, min_cost_thr)
+    else:
+        act_cost_fpr = min_cost_fpr
+        act_cost_fnr = min_cost_fnr
+        act_cost = min_cost
+
+    aucv = auc(fpr, tpr)
+    eerv = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
+
+    metrics = {
+        "1-AUC": 1-aucv,
+        "EER": eerv,
+        "MinCost": min_cost,
+        "MinCostThr": min_cost_thr,
+        "FPR4MinCost": min_cost_fpr,
+        "FNR4MinCost": min_cost_fnr,
+        "ActCost": act_cost,
+        "FPR4ActCost": act_cost_fpr,
+        "FNR4ActCost": act_cost_fnr,
+        "POS_COUNT": np.sum(labels),
+        "NEG_COUNT": len(labels)-np.sum(labels),
+        "FPR": fpr,
+        "FNR": fnr,
+        "POS": scores[labels == 1],
+        "NEG": scores[labels == 0],
+        "Recall": recall,
+        "Precision": precision,
+        "F1Score": f1_scores,
+        "F1Thr": f1_thr
+    }
+
+    return metrics
 
 
 def tile_representations(reps, factor):
