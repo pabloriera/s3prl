@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from .model import ConvBank
 from .dataset import PronscorDataset
-from .train_utils import process_input_forward,  get_phone_weights_as_torch, criterion
+from .train_utils import process_input_forward,  get_phone_weights_as_torch, criterion, get_summarisation
 import numpy as np
 
 
@@ -33,8 +33,9 @@ class DownstreamExpert(nn.Module):
                 self.datarc['phone_weights'])
         else:
             self.phone_weights = None
-        self.npc = self.datarc['npc']
-
+        self.npc = self.datarc.get('npc',False)
+        self.summarise = self.datarc.get('summarise',None)
+        self.class_weight = self.datarc.get('class_weight',False)
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
         self.dev_dataset = PronscorDataset(
@@ -136,10 +137,13 @@ class DownstreamExpert(nn.Module):
 
         predicted = self.model(features)
 
+        if self.summarise:
+            predicted, labels, _, _ = get_summarisation(phone_ids, labels, predicted, self.summarise)
+
+    
         # Changes -1, 0, 1 labels to 0, 0.5, 1 for Cross Entropy
         labels = (labels+1)/2
-
-        loss = criterion(predicted, labels, weights=phone_weights,
+        loss = criterion(predicted, labels, class_weight=self.class_weight, weights=phone_weights,
                          norm_per_phone_and_class=self.npc, min_frame_count=0)
         records['loss'] += [loss]
 

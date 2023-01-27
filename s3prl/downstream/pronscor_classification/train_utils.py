@@ -4,6 +4,7 @@ import numpy as np
 import yaml
 from IPython import embed
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 NUM_PHONES = 40
 
 
@@ -84,6 +85,93 @@ def format_labels(labels_array, phones_array, num_phones):
 
     return x
 
+def get_phones_masks(phone_list):
+    n_frames = len(phone_list)
+    index = torch.where(phone_list[:-1] != phone_list[1:])[0]
+    index = torch.hstack((index, torch.tensor(n_frames-1)))
+    start = 0
+    res = torch.zeros((len(index), n_frames))
+    for i, end in enumerate(index):
+        res[i, start:end+1] = 1
+        start = end+1
+    return res, phone_list[index]
+
+
+def get_min(phone_ids, predicted):
+    n_phones = predicted.shape[2]
+    min_batch_list = []
+    for i, phone_list in enumerate(phone_ids):
+        n_frames = len(phone_list)
+        index = torch.where(phone_list[:-1] != phone_list[1:])[0]
+        index = torch.hstack((index, torch.tensor(n_frames-1)))
+        start = 0
+        res = torch.zeros((len(index), n_phones)).to(predicted.device)
+        for j, end in enumerate(index):
+            phone = phone_list[end]
+            min_value = torch.min(predicted[i][start:end+1, phone])
+            res[j, phone]=min_value
+            start = end+1
+        min_batch_list.append(res)
+    return min_batch_list, n_phones
+
+
+def get_summarisation(phone_ids, labels, predicted, summarise):
+    
+    mask = abs(labels)
+    masked_outputs = predicted*mask
+     
+    phone_masks_list = []
+    phones_id_list = []
+    
+    for phone_list in phone_ids:
+        phone_mask, phonesids = get_phones_masks(phone_list)
+        phone_masks_list.append(phone_mask)
+        phones_id_list.append(phonesids)    
+
+    max_phone_count = max(len(x) for x in phones_id_list)
+    n_frames = labels.shape[1]
+    
+    summarisation_mask = torch.zeros(
+                (labels.shape[0], max_phone_count, n_frames), device=predicted.device)
+
+    for i, phone_mask in enumerate(phone_masks_list):
+        summarisation_mask[i, :phone_mask.shape[0], :] = phone_mask
+    
+    labels = torch.sign(torch.matmul(summarisation_mask, labels))
+    frame_counts = torch.matmul(summarisation_mask, mask)
+    frame_counts[frame_counts == 0] = 1
+
+    if summarise == 'lpp':
+        logits = torch.matmul(summarisation_mask, masked_outputs)
+        logits = torch.div(logits, frame_counts)
+        
+    elif summarise == 'softmin':
+        one_minus_outputs = 1-masked_outputs
+        M = torch.exp(one_minus_outputs)
+        M_masked = M*mask
+        N = torch.matmul(summarisation_mask, M_masked)
+        N_vec = torch.sum(N, dim=2)
+        xpnd_N_vec = N_vec.unsqueeze(2).repeat(1,1,summarisation_mask.shape[2])
+        cumm_N = summarisation_mask*xpnd_N_vec
+        cumm_N_vec = torch.sum(cumm_N, dim=1)
+        xpnd_cumm_N_vec = cumm_N_vec.unsqueeze(2).repeat(1,1,40)
+        xpnd_cumm_N_vec[xpnd_cumm_N_vec==0]=1
+        S = torch.div(M_masked,xpnd_cumm_N_vec)
+        masked_outputs = (S*masked_outputs)
+        logits = torch.matmul(summarisation_mask, masked_outputs)
+    
+    else:
+        min_phrase_list, n_phones = get_min(phone_ids, predicted)
+        aux_list = []
+        for phrase in min_phrase_list:
+            aux = torch.zeros(max_phone_count, n_phones) 
+            aux[:phrase.shape[0], :] = phrase
+            aux_list.append(aux)
+        logits = torch.stack(aux_list, dim=0).to(predicted.device)
+
+
+    return logits, labels, frame_counts, phones_id_list
+
 
 # phone_sym2int_dict:  Dictionary mapping phone symbol to integer given a phone list path
 # phone_int2sym_dict:  Dictionary mapping phone integer to symbol given a phone list path
@@ -140,9 +228,9 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
     return loss_fn(outputs, labels), torch.sum(weights)
 
 
-def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_class=False, min_frame_count=0):
+def criterion(batch_outputs, batch_labels, class_weight=False, weights=None, norm_per_phone_and_class=False,  min_frame_count=0):
 
-    if weights is None and norm_per_phone_and_class is None:
+    if not class_weight and weights is None and not norm_per_phone_and_class:
         mask = batch_labels != 0.5
         loss_fn = torch.nn.BCEWithLogitsLoss(reduction='none', weight=mask)
         total_loss = loss_fn(batch_outputs, batch_labels).sum()/mask.sum()
@@ -153,10 +241,11 @@ def criterion(batch_outputs, batch_labels, weights=None, norm_per_phone_and_clas
         loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels,
                                                    phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
-        total_loss = (loss_pos + loss_neg).sum()
-
-        # if not norm_per_phone_and_class:
-        total_weights = sum_weights_pos + sum_weights_neg
-        total_loss /= total_weights
+        if class_weight:
+            total_loss = (loss_pos.sum()/sum_weights_pos + loss_neg.sum()/sum_weights_pos)
+        else:
+            total_loss = (loss_pos + loss_neg).sum()        
+            total_weights = sum_weights_pos + sum_weights_pos
+            total_loss /= total_weights
 
     return total_loss

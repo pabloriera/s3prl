@@ -24,7 +24,7 @@ import pandas as pd
 
 from IPython import embed
 from downstream.pronscor_classification.dataset import PronscorDataset
-from downstream.pronscor_classification.train_utils import process_input_forward
+from downstream.pronscor_classification.train_utils import process_input_forward, get_phones_masks, get_summarisation
 
 
 def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
@@ -111,18 +111,6 @@ def get_metrics(df, cost_thrs=None, f1_thr=None):
     return metrics_table
 
 
-def get_phones_masks(phone_list):
-    n_frames = len(phone_list)
-    index = torch.where(phone_list[:-1] != phone_list[1:])[0]
-    index = torch.hstack((index, torch.tensor(n_frames-1)))
-    start = 0
-    res = torch.zeros((len(index), n_frames))
-    for i, end in enumerate(index):
-        res[i, start:end+1] = 1
-        start = end+1
-    return res, phone_list[index]
-
-
 def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
     """evaluate function will always be called on a single process even during distributed training"""
 
@@ -158,59 +146,28 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
 
             features, labels, phone_ids, lengths = process_input_forward(
                 features, labels, phone_ids, num_phones, silence_id=silence_id)
+            
             predicted = runner.downstream.model.model(features)
 
-            # labels = labels.cpu()
-            # predicted = predicted.cpu()
 
             if phone_db_map is not None:
                 predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
                 labels = labels[:, :,
                                 phone_db_map['labels'].tolist()]
+     
+            
+            
+            logits_by_phone_1hot, labels_by_phone_1hot, frame_counts, phones_id_list = get_summarisation(phone_ids, labels, predicted, summarise)
+            
 
-            phone_masks_list = []
-            phones_id_list = []
-
-            # TODO: clean phones in other[1] with phone_db_map if exists
-            for phone_list in phone_ids:
-                phone_mask, phonesids = get_phones_masks(phone_list)
-                phone_masks_list.append(phone_mask)
-                phones_id_list.append(phonesids)
-
-            max_phone_count = max(len(x) for x in phones_id_list)
-            n_frames = labels.shape[1]
-            summarisation_mask = torch.zeros(
-                (labels.shape[0], max_phone_count, n_frames), device=predicted.device)
-
-            for i, phone_mask in enumerate(phone_masks_list):
-                summarisation_mask[i, :phone_mask.shape[0], :] = phone_mask
-
-            # padded_sum_mats_list = []
-            # for summarisation_matrix in phone_masks_list:
-            #     npad = [(0, max_phone_count-len(summarisation_matrix)), (0, 0)]
-            #     padded_summarisation_matrix = np.pad(
-            #         summarisation_matrix, npad, 'constant', constant_values=0)
-            #     padded_sum_mats_list.append(padded_summarisation_matrix)
-
-            # mats2tensor = padded_sum_mats_list[0].T
-            # for m in padded_sum_mats_list[1:]:
-            #     mats2tensor = np.dstack((mats2tensor, m.T))
-            # summarisation_batch = torch.from_numpy(mats2tensor.T).float()
-
-            mask = abs(labels)
-            masked_outputs = predicted*mask
-            logits_by_phone_1hot = torch.matmul(
-                summarisation_mask, masked_outputs)
-            labels_by_phone_1hot = torch.sign(
-                torch.matmul(summarisation_mask, labels))
-            frame_counts = torch.matmul(summarisation_mask, mask)
-            frame_counts[frame_counts == 0] = 1
-
-            mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
-            gops_by_phone = torch.sum(
-                mean_logits_1hot, dim=2)
-            labels_by_phone = torch.sum(
-                labels_by_phone_1hot, dim=2)
+            if summarisation == 'lpp':
+                mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
+                gops_by_phone = torch.sum(mean_logits_1hot, dim=2)
+            else:
+                gops_by_phone = torch.sum(logits_by_phone_1hot, dim=2)
+            
+            
+            labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2)
 
             df_batch_dict = defaultdict(list)
 
