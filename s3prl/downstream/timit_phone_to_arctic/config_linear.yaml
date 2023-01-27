@@ -1,0 +1,33 @@
+runner:
+  total_steps: 15000
+  gradient_clipping: 1
+  gradient_accumulate_steps: 1
+
+  log_step: 1000
+  eval_step: 1000
+  save_step: 10000
+  max_keep: 1
+  eval_dataloaders:
+    - dev
+    - test
+
+optimizer:
+  name: AdamW
+  lr: 2.e-4
+
+downstream_expert:
+  datarc:
+    num_workers: 16
+    train_batch_size: 64 
+    eval_batch_size: 64
+    # data_root: /share/corpus/timit
+    data_root: ./downstream/timit_phone_to_arctic/data/TIMIT/data
+    phone_path: ./downstream/timit_phone_to_arctic/data
+    bucket_file: ./data/len_for_bucket_timit # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
+    sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
+    train_dev_seed: 1337
+
+  modelrc:
+    select: Linear
+    Linear:
+      {}

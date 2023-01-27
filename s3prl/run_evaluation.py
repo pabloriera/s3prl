@@ -71,6 +71,7 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
     evaluate_ratio = float(runner.config["runner"].get("evaluate_ratio", 1))
     evaluate_steps = round(len(dataloader) * evaluate_ratio)
 
+    output_per_frame = []
     output = []
     for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc=split, total=evaluate_steps)):
         if batch_id > evaluate_steps:
@@ -88,8 +89,20 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
                 features, labels, phone_ids, num_phones, silence_id=silence_id)
             predicted = runner.downstream.model.model(features)
 
-            # labels = labels.cpu()
-            # predicted = predicted.cpu()
+            scores_tab = []
+            phones_tab = []
+            labels_tab = []
+            for i in [-1, 1]:
+                _scores = predicted[labels == i]
+                scores_tab.extend(_scores.tolist())
+                labels_tab.extend(((i*torch.ones(len(_scores))+1)/2).tolist())
+                phones_tab.extend(torch.where(labels == i)[2].tolist())
+
+            data_per_frame = pd.DataFrame(
+                {'gop_scores': scores_tab,
+                 'phone_automatic': phones_tab,
+                 'label': labels_tab
+                 })
 
             if phone_db_map is not None:
                 predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
@@ -153,14 +166,16 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
             assert df_batch[df_batch['phone_automatic']
                             == 0]['gop_scores'].sum() == 0
             output.append(df_batch)
+            output_per_frame.append(data_per_frame)
 
     df_scores = pd.concat(output)
+    df_scores_per_frame = pd.concat(output_per_frame)
     df_scores = df_scores[df_scores['phone_automatic'] != 0]
     df_scores['label'] = (df_scores['label']+1)/2
 
     assert (df_scores['label'] == 0.5).sum() == 0
 
-    return df_scores
+    return df_scores, df_scores_per_frame
 
 
 def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
@@ -194,15 +209,19 @@ def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
         print("Split", split)
 
         if config is not None:
+            print('Using config file', config)
             with open(config, 'r') as fp:
                 config_ = yaml.safe_load(fp)
             datarc = config_['downstream_expert']['datarc']
+            print('Using config data', datarc)
             datarc['merge_phones'] = {4: 1}
             ds = PronscorDataset(split, datarc['eval_batch_size'], **datarc)
             setattr(runner.downstream.model, f'{split}_dataset', ds)
 
-        df_scores = evaluate(
+        df_scores_per_phone, df_scores_per_frame = evaluate(
             runner, split, phone_db_map=phone_db_map, silence_id=silence_id)
+
+        df_scores = df_scores_per_phone
 
         if split == 'dev':
             metrics_table = get_metrics(

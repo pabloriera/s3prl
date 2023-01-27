@@ -105,15 +105,16 @@ class Runner():
 
     def _load_weight(self, model, name):
         init_weight = self.init_ckpt.get(name)
+
         if init_weight:
-            show(
-                f'[Runner] - Loading {name} weights from the previous experiment')
-            model.load_state_dict(init_weight)
+            if not (self.args.upstream_trainable and name == 'Optimizer'):
+                show(
+                    f'[Runner] - Loading {name} weights from the previous experiment')
+                model.load_state_dict(init_weight)
 
     def _init_model(self, model, name, trainable, interfaces=None):
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
-
         self._load_weight(model, name)
 
         if is_initialized() and trainable and any((p.requires_grad for p in model.parameters())):

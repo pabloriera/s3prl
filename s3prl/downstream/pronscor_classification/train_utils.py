@@ -17,7 +17,7 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
 
     if f1_thr is None:
         precision, recall, f1_thr = precision_recall_curve(
-            df['label'], df['gop_scores'])
+            1-df['label'], -df['gop_scores'])
 
         numerator = 2 * recall * precision
         denom = recall + precision
@@ -25,10 +25,11 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
             numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
     else:
         precision, recall, f1_scores, _ = precision_recall_fscore_support(
-            df['label'], df['gop_scores'] > f1_thr, average='binary')
-        # TR = ((df['gop_scores']<0) & (df['label']==0)).sum()
-        # FR = ((df['gop_scores']<0) & (df['label']==1)).sum()
-        # FA = ((df['gop_scores']>0) & (df['label']==0)).sum()
+            1-df['label'], -df['gop_scores'] > f1_thr, average='binary')
+
+        # TR = ((df['gop_scores'] < 0) & (df['label'] == 0)).sum()
+        # FR = ((df['gop_scores'] < 0) & (df['label'] == 1)).sum()
+        # FA = ((df['gop_scores'] > 0) & (df['label'] == 0)).sum()
 
         # precision = TR/(TR+FR)
         # recall = TR/(TR+FA)
