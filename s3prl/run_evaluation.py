@@ -3,12 +3,8 @@ import argparse
 from collections import defaultdict
 import random
 import numpy as np
-from scipy.optimize import brentq
-from scipy import interpolate
 from IPython import embed
-from sklearn.metrics import roc_curve, auc
 import pandas as pd
-from sklearn.metrics import precision_recall_curve, precision_recall_fscore_support
 
 
 import torch
@@ -24,75 +20,7 @@ import pandas as pd
 
 from IPython import embed
 from downstream.pronscor_classification.dataset import PronscorDataset
-from downstream.pronscor_classification.train_utils import process_input_forward, get_phones_masks, get_summarisation
-
-
-def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
-    scores = np.array(df.gop_scores)
-    labels = np.array(df.label)
-
-    if f1_thr is None:
-        precision, recall, f1_thr = precision_recall_curve(
-            df['label'], df['gop_scores'])
-
-        numerator = 2 * recall * precision
-        denom = recall + precision
-        f1_scores = np.divide(
-            numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
-    else:
-        precision, recall, f1_scores, _ = precision_recall_fscore_support(
-            df['label'], df['gop_scores'] > f1_thr, average='binary')
-
-    fpr, tpr, thr = roc_curve(labels, scores)
-    fnr = 1-tpr
-
-    # Use the best (cheating) threshold to get the min_cost
-    cost_normalizer = min(cost_fp, 1.0)
-    cost = (cost_fp * fpr + fnr)/cost_normalizer
-    min_cost_idx = np.argmin(cost)
-    min_cost_thr = thr[min_cost_idx]
-    min_cost = cost[min_cost_idx]
-    min_cost_fpr = fpr[min_cost_idx]
-    min_cost_fnr = fnr[min_cost_idx]
-
-    if cost_thr is not None:
-        det_pos = labels[scores > cost_thr]
-        det_neg = labels[scores <= cost_thr]
-        act_cost_fpr = np.sum(det_pos == 0)/np.sum(labels == 0)
-        act_cost_fnr = np.sum(det_neg == 1)/np.sum(labels == 1)
-        act_cost = (cost_fp * act_cost_fpr + act_cost_fnr)/cost_normalizer
-#        print(min_cost, act_cost, cost_thr, min_cost_thr)
-    else:
-        act_cost_fpr = min_cost_fpr
-        act_cost_fnr = min_cost_fnr
-        act_cost = min_cost
-
-    aucv = auc(fpr, tpr)
-    eerv = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
-
-    metrics = {
-        "1-AUC": 1-aucv,
-        "EER": eerv,
-        "MinCost": min_cost,
-        "MinCostThr": min_cost_thr,
-        "FPR4MinCost": min_cost_fpr,
-        "FNR4MinCost": min_cost_fnr,
-        "ActCost": act_cost,
-        "FPR4ActCost": act_cost_fpr,
-        "FNR4ActCost": act_cost_fnr,
-        "POS_COUNT": np.sum(labels),
-        "NEG_COUNT": len(labels)-np.sum(labels),
-        "FPR": fpr,
-        "FNR": fnr,
-        "POS": scores[labels == 1],
-        "NEG": scores[labels == 0],
-        "Recall": recall,
-        "Precision": precision,
-        "F1Score": f1_scores,
-        "F1Thr": f1_thr
-    }
-
-    return metrics
+from downstream.pronscor_classification.train_utils import process_input_forward, compute_metrics, get_summarisation
 
 
 def get_metrics(df, cost_thrs=None, f1_thr=None):
@@ -129,8 +57,10 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
 
     dataloader = runner.downstream.model.get_dataloader(split)
     evaluate_ratio = float(runner.config["runner"].get("evaluate_ratio", 1))
+    summarise = runner.config["downstream_expert"]['datarc'].get("summarize", None))
     evaluate_steps = round(len(dataloader) * evaluate_ratio)
 
+    output_per_frame = []
     output = []
     for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc=split, total=evaluate_steps)):
         if batch_id > evaluate_steps:
@@ -149,24 +79,30 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
             
             predicted = runner.downstream.model.model(features)
 
+            # scores_tab = []
+            # phones_tab = []
+            # labels_tab = []
+            # for i in [-1, 1]:
+            #     _scores = predicted[labels == i]
+            #     scores_tab.extend(_scores.tolist())
+            #     labels_tab.extend(((i*torch.ones(len(_scores))+1)/2).tolist())
+            #     phones_tab.extend(torch.where(labels == i)[2].tolist())
 
-            if phone_db_map is not None:
-                predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
-                labels = labels[:, :,
-                                phone_db_map['labels'].tolist()]
+            # data_per_frame = pd.DataFrame(
+            #     {'gop_scores': scores_tab,
+            #      'phone_automatic': phones_tab,
+            #      'label': labels_tab
+            #      })
+
+            # if phone_db_map is not None:
+            #     predicted = predicted[:, :, phone_db_map['predicted'].tolist()]
+            #     labels = labels[:, :,
+            #                     phone_db_map['labels'].tolist()]
      
             
-            
             logits_by_phone_1hot, labels_by_phone_1hot, frame_counts, phones_id_list = get_summarisation(phone_ids, labels, predicted, summarise)
-            
 
-            if summarisation == 'lpp':
-                mean_logits_1hot = torch.div(logits_by_phone_1hot, frame_counts)
-                gops_by_phone = torch.sum(mean_logits_1hot, dim=2)
-            else:
-                gops_by_phone = torch.sum(logits_by_phone_1hot, dim=2)
-            
-            
+            gops_by_phone = torch.sum(logits_by_phone_1hot, dim=2)
             labels_by_phone = torch.sum(labels_by_phone_1hot, dim=2)
 
             df_batch_dict = defaultdict(list)
@@ -182,14 +118,16 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
             assert df_batch[df_batch['phone_automatic']
                             == 0]['gop_scores'].sum() == 0
             output.append(df_batch)
+            output_per_frame.append(data_per_frame)
 
     df_scores = pd.concat(output)
+    df_scores_per_frame = pd.concat(output_per_frame)
     df_scores = df_scores[df_scores['phone_automatic'] != 0]
     df_scores['label'] = (df_scores['label']+1)/2
 
     assert (df_scores['label'] == 0.5).sum() == 0
 
-    return df_scores
+    return df_scores, df_scores_per_frame
 
 
 def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
@@ -223,15 +161,19 @@ def main(ckpt_path, splits, config=None, phone_db_map=None, output_dir=None):
         print("Split", split)
 
         if config is not None:
+            print('Using config file', config)
             with open(config, 'r') as fp:
                 config_ = yaml.safe_load(fp)
             datarc = config_['downstream_expert']['datarc']
+            print('Using config data', datarc)
             datarc['merge_phones'] = {4: 1}
             ds = PronscorDataset(split, datarc['eval_batch_size'], **datarc)
             setattr(runner.downstream.model, f'{split}_dataset', ds)
 
-        df_scores = evaluate(
+        df_scores_per_phone, df_scores_per_frame = evaluate(
             runner, split, phone_db_map=phone_db_map, silence_id=silence_id)
+
+        df_scores = df_scores_per_phone
 
         if split == 'dev':
             metrics_table = get_metrics(

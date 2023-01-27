@@ -6,9 +6,22 @@
 #   Copyright    [ Copyleft(c), Speech Lab, NTU, Taiwan ]
 """*********************************************************************************************"""
 
+
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+class Linear(nn.Module):
+    def __init__(self, input_dim, output_class_num, **kwargs):
+        super(Linear, self).__init__()
+
+        # init attributes
+        self.linear = nn.Linear(input_dim, output_class_num)
+
+    def forward(self, features):
+        predicted = self.linear(features)
+        return predicted
 
 
 class ConvBank(nn.Module):
@@ -23,7 +36,8 @@ class ConvBank(nn.Module):
         self.cnns = nn.ModuleList()
         assert len(kernels) > 0
         for kernel in kernels:
-            self.cnns.append(nn.Conv1d(latest_size, cnn_size, kernel, padding=kernel//2))
+            self.cnns.append(nn.Conv1d(latest_size, cnn_size,
+                             kernel, padding=kernel//2))
         latest_size = cnn_size * len(kernels)
 
         self.out_linear = nn.Linear(latest_size, output_class_num)

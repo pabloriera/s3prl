@@ -9,7 +9,7 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from .model import ConvBank
+from .model import *
 from .dataset import PronscorDataset
 from .train_utils import process_input_forward,  get_phone_weights_as_torch, criterion, get_summarisation
 import numpy as np
@@ -47,7 +47,8 @@ class DownstreamExpert(nn.Module):
         self.objective = nn.BCEWithLogitsLoss()
 
         self.logging = os.path.join(expdir, 'log.log')
-        self.best = defaultdict(lambda: np.inf)
+        self.best_loss = defaultdict(lambda: np.inf)
+        self.best_f1 = defaultdict(lambda: 0)
 
         # delattr(self, 'model')
         model_cls = eval(self.modelrc['select'])
@@ -140,7 +141,6 @@ class DownstreamExpert(nn.Module):
         if self.summarise:
             predicted, labels, _, _ = get_summarisation(phone_ids, labels, predicted, self.summarise)
 
-    
         # Changes -1, 0, 1 labels to 0, 0.5, 1 for Cross Entropy
         labels = (labels+1)/2
         loss = criterion(predicted, labels, class_weight=self.class_weight, weights=phone_weights,
@@ -148,12 +148,24 @@ class DownstreamExpert(nn.Module):
         records['loss'] += [loss]
 
         for pred, lab, l in zip(predicted, labels, lengths):
-            records['acc_pos'] += [(pred[:l][lab[:l] == 1]
-                                    > 0.666).float().mean()]
-            m = (pred[:l][lab[:l] == 0] < 0.333).float().mean()
-            if not torch.isnan(m):
-                records['acc_neg'] += [m]
-            # records['sample_wise_metric'] += [torch.FloatTensor(utter_result).mean().item()]
+            # records['acc_pos'] += [(pred[:l][lab[:l] == 1]
+            #                         > 0).float().mean()]
+            # m = (pred[:l][lab[:l] == 0] < 0).float().mean()
+            # if not torch.isnan(m):
+            #     records['acc_neg'] += [m]
+
+            TR = (pred[:l][lab[:l] == 0] < 0).float().sum()
+            FR = (pred[:l][lab[:l] == 1] < 0).float().sum()
+            FA = (pred[:l][lab[:l] == 0] > 0).float().sum()
+
+            precision = TR/(TR+FR)
+            recall = TR/(TR+FA)
+            f1_scores = 2*(precision*recall)/(precision+recall)
+            bs = predicted.shape[0]
+            records['TR'] = [TR/bs]
+            records['FA'] = [FA/bs]
+            if not torch.isnan(f1_scores):
+                records['f1_scores'] = [f1_scores]
 
         return loss
 
@@ -175,35 +187,47 @@ class DownstreamExpert(nn.Module):
             global_step:
                 global_step in runner, which is helpful for Tensorboard logging
         """
-        prefix = f'pronscor/{split}-'
+        prefix = f'pronscor/{split}'
         average_loss = torch.FloatTensor(records['loss']).mean().item()
-        average_acc_pos = torch.FloatTensor(records['acc_pos']).mean().item()
-        average_acc_neg = torch.FloatTensor(records['acc_neg']).mean().item()
+        average_TR = torch.FloatTensor(records['TR']).mean().item()
+        average_FA = torch.FloatTensor(records['FA']).mean().item()
+        average_f1_scores = torch.FloatTensor(
+            records['f1_scores']).mean().item()
 
         logger.add_scalar(
-            f'{prefix}loss',
+            f'{prefix}-loss',
             average_loss,
             global_step=global_step
         )
         logger.add_scalar(
-            f'{prefix}acc_pos',
-            average_acc_pos,
+            f'{prefix}-TR',
+            average_TR,
             global_step=global_step
         )
 
         logger.add_scalar(
-            f'{prefix}acc_neg',
-            average_acc_neg,
+            f'{prefix}-FA',
+            average_FA,
             global_step=global_step
         )
 
-        message = f'{prefix}|step:{global_step}|loss:{average_loss}\n'
+        logger.add_scalar(
+            f'{prefix}-f1_score',
+            average_f1_scores,
+            global_step=global_step
+        )
+
+        message = f'{prefix}|step:{global_step}|loss:{average_loss}|f1:{average_f1_scores} \n'
         save_ckpt = []
-        if average_loss < self.best[prefix]:
-            self.best[prefix] = average_loss
-            message = f'best|{message}'
-            name = prefix.split('/')[-1].split('-')[0]
-            save_ckpt.append(f'best-states-{name}.ckpt')
+        if average_loss < self.best_loss[prefix]:
+            self.best_loss[prefix] = average_loss
+            message = f'best_loss|{message}'
+            save_ckpt.append(f'best-loss-{split}.ckpt')
+        if average_f1_scores > self.best_f1[prefix]:
+            self.best_f1[prefix] = average_f1_scores
+            message = f'best_f1|{message}'
+            save_ckpt.append(f'best-f1-{split}.ckpt')
+
         with open(self.logging, 'a') as f:
             f.write(message)
 
