@@ -1,6 +1,7 @@
 
 import torch
 import numpy as np
+import pandas as pd
 import yaml
 from IPython import embed
 from sklearn.metrics import roc_curve, auc
@@ -12,13 +13,33 @@ import torch.nn.functional as F
 NUM_PHONES = 40
 
 
-def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
-    scores = np.array(df.gop_scores)
-    labels = np.array(df.label)
+def get_metrics(df, cost_thrs=None, f1_thr=None):
+
+    metrics = dict()
+
+    metrics['all'] = compute_metrics(df, cost_thr=None, f1_thr=f1_thr)
+
+    for phone, g in df.groupby('phones'):
+        cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
+        metrics[phone] = compute_metrics(g, cost_thr=cost_thr, f1_thr=f1_thr)
+
+    metrics_table = pd.DataFrame(metrics).T
+    metrics_table.index.name = 'phones'
+
+    return metrics_table
+
+
+def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
+    if pos_label == 0:
+        scores = -df['scores']
+        labels = 1-df['labels']
+    elif pos_label == 1:
+        scores = df['scores']
+        labels = df['labels']
 
     if f1_thr is None:
         precision, recall, f1_thr = precision_recall_curve(
-            1-df['label'], -df['gop_scores'])
+            labels, scores)
 
         numerator = 2 * recall * precision
         denom = recall + precision
@@ -26,11 +47,11 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None):
             numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
     else:
         precision, recall, f1_scores, _ = precision_recall_fscore_support(
-            1-df['label'], -df['gop_scores'] > f1_thr, average='binary')
+            labels, scores > f1_thr, average='binary')
 
-        # TR = ((df['gop_scores'] < 0) & (df['label'] == 0)).sum()
-        # FR = ((df['gop_scores'] < 0) & (df['label'] == 1)).sum()
-        # FA = ((df['gop_scores'] > 0) & (df['label'] == 0)).sum()
+        # TR = ((df['scores'] < 0) & (df['label'] == 0)).sum()
+        # FR = ((df['scores'] < 0) & (df['label'] == 1)).sum()
+        # FA = ((df['scores'] > 0) & (df['label'] == 0)).sum()
 
         # precision = TR/(TR+FR)
         # recall = TR/(TR+FA)
@@ -165,6 +186,7 @@ def format_labels(labels_array, phones_array, num_phones):
 
     return x
 
+
 def get_phones_masks(phone_list):
     n_frames = len(phone_list)
     index = torch.where(phone_list[:-1] != phone_list[1:])[0]
@@ -175,6 +197,24 @@ def get_phones_masks(phone_list):
         res[i, start:end+1] = 1
         start = end+1
     return res, phone_list[index]
+
+
+def get_max(phone_ids, predicted):
+    n_phones = predicted.shape[2]
+    max_batch_list = []
+    for i, phone_list in enumerate(phone_ids):
+        n_frames = len(phone_list)
+        index = torch.where(phone_list[:-1] != phone_list[1:])[0]
+        index = torch.hstack((index, torch.tensor(n_frames-1)))
+        start = 0
+        res = torch.zeros((len(index), n_phones)).to(predicted.device)
+        for j, end in enumerate(index):
+            phone = phone_list[end]
+            max_value = torch.max(predicted[i][start:end+1, phone])
+            res[j, phone] = max_value
+            start = end+1
+        max_batch_list.append(res)
+    return max_batch_list, n_phones
 
 
 def get_min(phone_ids, predicted):
@@ -189,65 +229,72 @@ def get_min(phone_ids, predicted):
         for j, end in enumerate(index):
             phone = phone_list[end]
             min_value = torch.min(predicted[i][start:end+1, phone])
-            res[j, phone]=min_value
+            res[j, phone] = min_value
             start = end+1
         min_batch_list.append(res)
     return min_batch_list, n_phones
 
 
 def get_summarisation(phone_ids, labels, predicted, summarise):
-    
+
     mask = abs(labels)
     masked_outputs = predicted*mask
-     
+
     phone_masks_list = []
     phones_id_list = []
-    
+
     for phone_list in phone_ids:
         phone_mask, phonesids = get_phones_masks(phone_list)
         phone_masks_list.append(phone_mask)
-        phones_id_list.append(phonesids)    
+        phones_id_list.append(phonesids)
 
     max_phone_count = max(len(x) for x in phones_id_list)
     n_frames = labels.shape[1]
-    
+
     summarisation_mask = torch.zeros(
-                (labels.shape[0], max_phone_count, n_frames), device=predicted.device)
+        (labels.shape[0], max_phone_count, n_frames), device=predicted.device)
 
     for i, phone_mask in enumerate(phone_masks_list):
         summarisation_mask[i, :phone_mask.shape[0], :] = phone_mask
-    
+
     labels = torch.sign(torch.matmul(summarisation_mask, labels))
     frame_counts = torch.matmul(summarisation_mask, mask)
     frame_counts[frame_counts == 0] = 1
 
-          
     if summarise == 'softmin':
         one_minus_outputs = 1-masked_outputs
         M = torch.exp(one_minus_outputs)
         M_masked = M*mask
         N = torch.matmul(summarisation_mask, M_masked)
         N_vec = torch.sum(N, dim=2)
-        xpnd_N_vec = N_vec.unsqueeze(2).repeat(1,1,summarisation_mask.shape[2])
+        xpnd_N_vec = N_vec.unsqueeze(2).repeat(
+            1, 1, summarisation_mask.shape[2])
         cumm_N = summarisation_mask*xpnd_N_vec
         cumm_N_vec = torch.sum(cumm_N, dim=1)
-        xpnd_cumm_N_vec = cumm_N_vec.unsqueeze(2).repeat(1,1,40)
-        xpnd_cumm_N_vec[xpnd_cumm_N_vec==0]=1
-        S = torch.div(M_masked,xpnd_cumm_N_vec)
+        xpnd_cumm_N_vec = cumm_N_vec.unsqueeze(2).repeat(1, 1, 40)
+        xpnd_cumm_N_vec[xpnd_cumm_N_vec == 0] = 1
+        S = torch.div(M_masked, xpnd_cumm_N_vec)
         masked_outputs = (S*masked_outputs)
         logits = torch.matmul(summarisation_mask, masked_outputs)
     elif summarise == 'min':
         min_phrase_list, n_phones = get_min(phone_ids, predicted)
         aux_list = []
         for phrase in min_phrase_list:
-            aux = torch.zeros(max_phone_count, n_phones) 
+            aux = torch.zeros(max_phone_count, n_phones)
             aux[:phrase.shape[0], :] = phrase
             aux_list.append(aux)
         logits = torch.stack(aux_list, dim=0).to(predicted.device)
-    elif summarise == 'lpp' or summarise is None:
+    elif summarise == 'max':
+        min_phrase_list, n_phones = get_max(phone_ids, predicted)
+        logits = torch.zeros(len(min_phrase_list),
+                             max_phone_count, n_phones, device=predicted.device)
+        for i, phrase in enumerate(min_phrase_list):
+            logits[i, :phrase.shape[0], :] = phrase
+    elif summarise == 'lpp':
         logits = torch.matmul(summarisation_mask, masked_outputs)
         logits = torch.div(logits, frame_counts)
-
+    else:
+        raise Exception('Wrong summarise method')
 
     return logits, labels, frame_counts, phones_id_list
 
@@ -297,6 +344,7 @@ def calculate_loss(outputs, mask, labels, phone_weights=None, norm_per_phone_and
         weights = weights * phone_weights
 
     if norm_per_phone_and_class:
+        # batchnorm
         frame_count = torch.sum(mask, dim=[0, 1])
         weights = weights * torch.nan_to_num(1 / frame_count)
         if min_frame_count > 0:
@@ -321,10 +369,11 @@ def criterion(batch_outputs, batch_labels, class_weight=False, weights=None, nor
                                                    phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
         if class_weight:
-            total_loss = (loss_pos.sum()/sum_weights_pos + loss_neg.sum()/sum_weights_pos)
+            total_loss = (loss_pos.sum()/sum_weights_pos +
+                          loss_neg.sum()/sum_weights_pos)
         else:
-            total_loss = (loss_pos + loss_neg).sum()        
-            total_weights = sum_weights_pos + sum_weights_pos
+            total_loss = (loss_pos + loss_neg).sum()
+            total_weights = sum_weights_pos + sum_weights_neg
             total_loss /= total_weights
 
     return total_loss

@@ -23,20 +23,6 @@ from downstream.pronscor_classification.dataset import PronscorDataset
 from downstream.pronscor_classification.train_utils import process_input_forward, compute_metrics, get_summarisation
 
 
-def get_metrics(df, cost_thrs=None, f1_thr=None):
-
-    metrics = dict()
-
-    metrics['all'] = compute_metrics(df, cost_thr=None, f1_thr=f1_thr)
-
-    for phone, g in df.groupby('phone_automatic'):
-        cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
-        metrics[phone] = compute_metrics(g, cost_thr=cost_thr, f1_thr=f1_thr)
-
-    metrics_table = pd.DataFrame(metrics).T
-    metrics_table.index.name = 'phone_automatic'
-
-    return metrics_table
 
 
 def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
@@ -79,20 +65,20 @@ def evaluate(runner, split=None, phone_db_map=None, silence_id=0):
             
             predicted = runner.downstream.model.model(features)
 
-            # scores_tab = []
-            # phones_tab = []
-            # labels_tab = []
-            # for i in [-1, 1]:
-            #     _scores = predicted[labels == i]
-            #     scores_tab.extend(_scores.tolist())
-            #     labels_tab.extend(((i*torch.ones(len(_scores))+1)/2).tolist())
-            #     phones_tab.extend(torch.where(labels == i)[2].tolist())
+            scores_tab = []
+            phones_tab = []
+            labels_tab = []
+            for i in [-1, 1]:
+                _scores = predicted[labels == i]
+                scores_tab.extend(_scores.tolist())
+                labels_tab.extend(((i*torch.ones(len(_scores))+1)/2).tolist())
+                phones_tab.extend(torch.where(labels == i)[2].tolist())
 
-            # data_per_frame = pd.DataFrame(
-            #     {'gop_scores': scores_tab,
-            #      'phone_automatic': phones_tab,
-            #      'label': labels_tab
-            #      })
+            data_per_frame = pd.DataFrame(
+                {'gop_scores': scores_tab,
+                 'phone_automatic': phones_tab,
+                 'label': labels_tab
+                 })
 
             # if phone_db_map is not None:
             #     predicted = predicted[:, :, phone_db_map['predicted'].tolist()]

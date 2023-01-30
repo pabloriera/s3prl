@@ -2,8 +2,7 @@
 # IMPORTATION #
 ###############
 import os
-import math
-import random
+from pathlib import Path
 from IPython import embed
 from collections import defaultdict
 import torch
@@ -11,8 +10,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from .model import *
 from .dataset import PronscorDataset
-from .train_utils import process_input_forward,  get_phone_weights_as_torch, criterion, get_summarisation
+from .train_utils import process_input_forward,  get_phone_weights_as_torch, criterion, get_summarisation, get_metrics
 import numpy as np
+import pandas as pd
 
 
 class DownstreamExpert(nn.Module):
@@ -28,14 +28,15 @@ class DownstreamExpert(nn.Module):
         self.upstream_dim = upstream_dim
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
+        self.expdir = expdir
         if 'phone_weights' in self.datarc:
             self.phone_weights = get_phone_weights_as_torch(
                 self.datarc['phone_weights'])
         else:
             self.phone_weights = None
-        self.npc = self.datarc.get('npc',False)
-        self.summarise = self.datarc.get('summarise',None)
-        self.class_weight = self.datarc.get('class_weight',False)
+        self.npc = self.datarc.get('npc', False)
+        self.summarise = self.datarc.get('summarise', None)
+        self.class_weight = self.datarc.get('class_weight', False)
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
         self.dev_dataset = PronscorDataset(
@@ -138,34 +139,31 @@ class DownstreamExpert(nn.Module):
 
         predicted = self.model(features)
 
-        if self.summarise:
-            predicted, labels, _, _ = get_summarisation(phone_ids, labels, predicted, self.summarise)
+        if self.summarise is not None:
+            predicted, labels, _, phones_id_list = get_summarisation(
+                phone_ids, labels, predicted, self.summarise)
 
         # Changes -1, 0, 1 labels to 0, 0.5, 1 for Cross Entropy
-        labels = (labels+1)/2
-        loss = criterion(predicted, labels, class_weight=self.class_weight, weights=phone_weights,
+        loss = criterion(predicted, (labels+1)/2, class_weight=self.class_weight, weights=phone_weights,
                          norm_per_phone_and_class=self.npc, min_frame_count=0)
         records['loss'] += [loss]
 
-        for pred, lab, l in zip(predicted, labels, lengths):
-            # records['acc_pos'] += [(pred[:l][lab[:l] == 1]
-            #                         > 0).float().mean()]
-            # m = (pred[:l][lab[:l] == 0] < 0).float().mean()
-            # if not torch.isnan(m):
-            #     records['acc_neg'] += [m]
-
-            TR = (pred[:l][lab[:l] == 0] < 0).float().sum()
-            FR = (pred[:l][lab[:l] == 1] < 0).float().sum()
-            FA = (pred[:l][lab[:l] == 0] > 0).float().sum()
-
-            precision = TR/(TR+FR)
-            recall = TR/(TR+FA)
-            f1_scores = 2*(precision*recall)/(precision+recall)
-            bs = predicted.shape[0]
-            records['TR'] = [TR/bs]
-            records['FA'] = [FA/bs]
-            if not torch.isnan(f1_scores):
-                records['f1_scores'] = [f1_scores]
+        if split in ['dev', 'test']:
+            if self.summarise is None:
+                for i in [-1, 1]:
+                    _scores = predicted[labels == i]
+                    records['phones'] += torch.where(labels == i)[2].tolist()
+                    records['scores'] += _scores.tolist()
+                    records['labels'] += (i*torch.ones(len(_scores))).tolist()
+            else:
+                gops_by_phone = torch.sum(predicted, dim=2)
+                labels_by_phone = torch.sum(labels, dim=2)
+                for i, (phnlist, labs, gops) in enumerate(zip(phones_id_list, labels_by_phone, gops_by_phone)):
+                    phrase_labels = labs[:len(phnlist)]
+                    phrase_gops = gops[:len(phnlist)]
+                    records['phones'] += phnlist.tolist()
+                    records['scores'] += phrase_gops.tolist()
+                    records['labels'] += phrase_labels.tolist()
 
         return loss
 
@@ -187,48 +185,56 @@ class DownstreamExpert(nn.Module):
             global_step:
                 global_step in runner, which is helpful for Tensorboard logging
         """
+
         prefix = f'pronscor/{split}'
         average_loss = torch.FloatTensor(records['loss']).mean().item()
-        average_TR = torch.FloatTensor(records['TR']).mean().item()
-        average_FA = torch.FloatTensor(records['FA']).mean().item()
-        average_f1_scores = torch.FloatTensor(
-            records['f1_scores']).mean().item()
-
         logger.add_scalar(
             f'{prefix}-loss',
             average_loss,
             global_step=global_step
         )
-        logger.add_scalar(
-            f'{prefix}-TR',
-            average_TR,
-            global_step=global_step
-        )
 
-        logger.add_scalar(
-            f'{prefix}-FA',
-            average_FA,
-            global_step=global_step
-        )
-
-        logger.add_scalar(
-            f'{prefix}-f1_score',
-            average_f1_scores,
-            global_step=global_step
-        )
-
-        message = f'{prefix}|step:{global_step}|loss:{average_loss}|f1:{average_f1_scores} \n'
-        save_ckpt = []
+        message = f'{prefix}|step:{global_step}|loss:{average_loss} \n'
+        is_best_loss = False
+        save_names = []
         if average_loss < self.best_loss[prefix]:
             self.best_loss[prefix] = average_loss
             message = f'best_loss|{message}'
-            save_ckpt.append(f'best-loss-{split}.ckpt')
-        if average_f1_scores > self.best_f1[prefix]:
-            self.best_f1[prefix] = average_f1_scores
-            message = f'best_f1|{message}'
-            save_ckpt.append(f'best-f1-{split}.ckpt')
+            is_best_loss = True
+            save_names.append(f'best-loss-{split}.ckpt')
 
         with open(self.logging, 'a') as f:
             f.write(message)
 
-        return save_ckpt
+        if split in ['dev', 'test']:
+
+            df = pd.DataFrame({k: records[k]
+                               for k in ['phones', 'scores', 'labels']})
+            df = df[df['phones'] != 0]
+            df['labels'] = (df['labels']+1)/2
+            metrics_table = get_metrics(df, cost_thrs=None)
+
+            average_f1_scores = metrics_table.loc['all']['F1Score'].max()
+            logger.add_scalar(
+                f'{prefix}-f1_score',
+                average_f1_scores,
+                global_step=global_step
+            )
+            message = f'{prefix}|step:{global_step}|f1:{average_f1_scores} \n'
+
+            if average_f1_scores > self.best_f1[prefix]:
+                self.best_f1[prefix] = average_f1_scores
+                message = f'best_f1|{message}'
+                save_names.append(f'best-f1-{split}.ckpt')
+
+            records_name = f'{split}-{global_step}'
+            if is_best_loss:
+                records_name = f'{records_name}-best_loss'
+
+            save_path = Path(self.expdir, records_name+'.records')
+            torch.save(records, save_path)
+
+            with open(self.logging, 'a') as f:
+                f.write(message)
+
+        return save_names

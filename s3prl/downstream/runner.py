@@ -481,6 +481,8 @@ class Runner():
             batch_ids=batch_ids,
             total_batch_num=len(dataloader),
         )
+
+        
         batch_ids = []
         records = defaultdict(list)
 
