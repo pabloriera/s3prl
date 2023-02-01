@@ -62,43 +62,47 @@ class PronscorDataset(Dataset):
             line = line.strip('\n').split(' ')
             self.L[line[0]] = [int(l) for l in line[1:]]
 
-        if split == 'train':
-            train_list = open(os.path.join(
-                phone_path, 'train_split.txt')).readlines()
-            usage_list = [line.strip('\n') for line in train_list]
-        elif split == 'dev':
-            dev_list = open(os.path.join(
-                phone_path, 'dev_split.txt')).readlines()
-            usage_list = [line.strip('\n') for line in dev_list]
-        elif split == 'test':
-            test_list = open(os.path.join(
-                phone_path, 'test_split.txt')).readlines()
-            usage_list = [line.strip('\n') for line in test_list]
-            # no separé un dev. ver si me lo cobra.
-            # if split == 'dev':
-            #    usage_list = [line for line in usage_list if not line.split(
-            #        '-')[1].lower() in TEST_SPEAKERS]  # held-out speakers from test
-            # else:
-            #    usage_list = [line for line in usage_list if line.split(
-            #        '-')[1].lower() in TEST_SPEAKERS]  # 24 core test speakers, 192 sentences, 0.16 hr
-        else:
-            raise ValueError(
-                'Invalid \'split\' argument for dataset: PronscorDataset!')
+
+
+        split_list = open(os.path.join(
+                phone_path, f'{split}_split.txt')).readlines() 
+        usage_list = [line.strip('\n') for line in split_list]
+
+        # if split == 'train':
+        #     train_list = open(os.path.join(
+        #         phone_path, 'train_split.txt')).readlines()
+        #     usage_list = [line.strip('\n') for line in train_list]
+        # elif split == 'dev':
+        #     dev_list = open(os.path.join(
+        #         phone_path, 'dev_split.txt')).readlines()
+        #     usage_list = [line.strip('\n') for line in dev_list]
+        # elif split == 'test':
+        #     test_list = open(os.path.join(
+        #         phone_path, 'test_split.txt')).readlines()
+        #     usage_list = [line.strip('\n') for line in test_list]
+
+
         usage_list = {line.strip('\n'): None for line in usage_list}
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
               ', number of data for ' + split + ': ' + str(len(usage_list)))
         # Read table for bucketing
         assert os.path.isdir(
             bucket_file), f'Missing {bucket_file} Please first run `preprocess/generate_len_for_bucket.py` to get bucket file.'
-        if split == 'train':
-            table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv')).sort_values(
-                by=['length'], ascending=False)
-        elif split == 'dev':
-            table = pd.read_csv(os.path.join(bucket_file, 'DEV16k.csv')).sort_values(
-                by=['length'], ascending=False)
-        elif split == 'test':
-            table = pd.read_csv(os.path.join(bucket_file, 'TEST16k.csv')).sort_values(
-                by=['length'], ascending=False)
+
+        try:
+            table = pd.read_csv(os.path.join(bucket_file, '16k.csv')).sort_values(
+                    by=['length'], ascending=False) 
+
+        except:
+            if split == 'train':
+                table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv')).sort_values(
+                    by=['length'], ascending=False)
+            elif split == 'dev':
+                table = pd.read_csv(os.path.join(bucket_file, 'DEV16k.csv')).sort_values(
+                    by=['length'], ascending=False)
+            elif split == 'test':
+                table = pd.read_csv(os.path.join(bucket_file, 'TEST16k.csv')).sort_values(
+                    by=['length'], ascending=False)
 
         X = table['file_path'].tolist()
         X_lens = table['length'].tolist()
