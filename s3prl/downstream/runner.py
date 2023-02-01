@@ -162,6 +162,12 @@ class Runner():
             refresh=upstream_refresh,
         ).to(self.args.device)
 
+        # unfreeze_layers = 8
+        # show(f'[Runner] - Freezeing all until last {unfreeze_layers} layers')
+        # params = [param for name, param in model.named_parameters()]
+        # for param in params[:-unfreeze_layers]:
+        #     param.requires_grad = False
+
         if is_initialized() and get_rank() == 0:
             torch.distributed.barrier()
 
@@ -293,7 +299,6 @@ class Runner():
                     if pbar.n >= pbar.total:
                         break
                     global_step = pbar.n + 1
-
                     wavs = [torch.FloatTensor(wav).to(
                         self.args.device) for wav in wavs]
                     if self.upstream.trainable:
@@ -482,7 +487,6 @@ class Runner():
             total_batch_num=len(dataloader),
         )
 
-        
         batch_ids = []
         records = defaultdict(list)
 

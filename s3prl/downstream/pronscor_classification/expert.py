@@ -50,6 +50,7 @@ class DownstreamExpert(nn.Module):
         self.logging = os.path.join(expdir, 'log.log')
         self.best_loss = defaultdict(lambda: np.inf)
         self.best_f1 = defaultdict(lambda: 0)
+        self.best_1mauc = defaultdict(lambda: np.inf)
 
         # delattr(self, 'model')
         model_cls = eval(self.modelrc['select'])
@@ -58,16 +59,23 @@ class DownstreamExpert(nn.Module):
             self.upstream_dim, output_class_num=self.train_dataset.class_num, **model_conf)
 
     def _get_train_dataloader(self, dataset):
+        if self.datarc['bucketing']:
+            batch_size = 1
+        else:
+            batch_size = self.datarc['train_batch_size']
         return DataLoader(
-            dataset, batch_size=1,  # for bucketing
+            dataset, batch_size=batch_size,  # for bucketing
             shuffle=True, num_workers=self.datarc['num_workers'],
             drop_last=False, pin_memory=True, collate_fn=dataset.collate_fn
         )
 
     def _get_eval_dataloader(self, dataset):
-
+        if self.datarc.get('bucketing', True):
+            batch_size = 1
+        else:
+            batch_size = self.datarc['eval_batch_size']
         return DataLoader(
-            dataset, batch_size=1,  # for bucketing
+            dataset, batch_size=batch_size,  # for bucketing
             shuffle=False, num_workers=self.datarc['num_workers'],
             drop_last=False, pin_memory=True, collate_fn=dataset.collate_fn
         )
@@ -226,6 +234,19 @@ class DownstreamExpert(nn.Module):
                 self.best_f1[prefix] = average_f1_scores
                 message = f'best_f1|{message}'
                 save_names.append(f'best-f1-{split}.ckpt')
+
+            average_1mauc = metrics_table.loc['all']['1-AUC']
+            logger.add_scalar(
+                f'{prefix}-1-AUC',
+                average_1mauc,
+                global_step=global_step
+            )
+            message = f'{prefix}|step:{global_step}|1-AUC:{average_1mauc} \n'
+
+            if average_1mauc > self.best_1mauc[prefix]:
+                self.best_1mauc[prefix] = average_1mauc
+                message = f'best_f1|{message}'
+                save_names.append(f'best-1-AUC-{split}.ckpt')
 
             records_name = f'{split}-{global_step}'
             if is_best_loss:

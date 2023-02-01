@@ -11,6 +11,8 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 #-------------#
 import torchaudio
+import numpy as np
+
 
 # TODO: use phone dictionaries not fixed number
 from .train_utils import get_phone_dictionaries, NUM_PHONES
@@ -34,7 +36,8 @@ class PronscorDataset(Dataset):
             phone_path,
             bucket_file,
             sample_rate=16000,
-            **kwargs):
+            bucketing=True,
+            ** kwargs):
 
         super(PronscorDataset, self).__init__()
 
@@ -99,29 +102,35 @@ class PronscorDataset(Dataset):
 
         X = table['file_path'].tolist()
         X_lens = table['length'].tolist()
-
-        # Use bucketing to allow different batch sizes at run time
         self.X = []
-        batch_x, batch_len = [], []
+        self.bucketing = bucketing
+        if self.bucketing:
+            # Use bucketing to allow different batch sizes at run time
 
-        for x, x_len in zip(X, X_lens):
-            if self._parse_x_name(x) in usage_list:
-                batch_x.append(x)
-                batch_len.append(x_len)
-                # Fill in batch_x until batch is full
-                if len(batch_x) == bucket_size:
-                    # Half the batch size if seq too long
-                    if (bucket_size >= 2) and (max(batch_len) > HALF_BATCHSIZE_TIME):
-                        self.X.append(batch_x[:bucket_size//2])
-                        self.X.append(batch_x[bucket_size//2:])
-                    else:
-                        self.X.append(batch_x)
-                    batch_x, batch_len = [], []
+            batch_x, batch_len = [], []
 
-        # Gather the last batch
-        if len(batch_x) > 1:
-            if self._parse_x_name(x) in usage_list:
-                self.X.append(batch_x)
+            for x, x_len in zip(X, X_lens):
+                if self._parse_x_name(x) in usage_list:
+                    batch_x.append(x)
+                    batch_len.append(x_len)
+                    # Fill in batch_x until batch is full
+                    if len(batch_x) == bucket_size:
+                        # Half the batch size if seq too long
+                        if (bucket_size >= 2) and (max(batch_len) > HALF_BATCHSIZE_TIME):
+                            self.X.append(batch_x[:bucket_size//2])
+                            self.X.append(batch_x[bucket_size//2:])
+                        else:
+                            self.X.append(batch_x)
+                        batch_x, batch_len = [], []
+
+            # Gather the last batch
+            if len(batch_x) > 1:
+                if self._parse_x_name(x) in usage_list:
+                    self.X.append(batch_x)
+        else:
+            for x, x_len in zip(X, X_lens):
+                if self._parse_x_name(x) in usage_list:
+                    self.X.append(x)
 
     def _parse_x_name(self, x):
         return '-'.join(x.split('.')[0].split('/')[1:])
@@ -136,15 +145,28 @@ class PronscorDataset(Dataset):
 
     def __getitem__(self, index):
 
-        # Load acoustic feature and pad
-        wav_batch = [self._load_wav(x_file) for x_file in self.X[index]]
-        label_batch = [torch.LongTensor(
-            self.L[self._parse_x_name(x_file)]) for x_file in self.X[index]]
-        phoneid_batch = [torch.LongTensor(
-            self.Y[self._parse_x_name(x_file)]) for x_file in self.X[index]]
-        # bucketing, return ((wavs, labels))
-        return wav_batch, label_batch, phoneid_batch
+        if self.bucketing:
+            # Load acoustic feature and pad
+            wav_batch = [self._load_wav(x_file) for x_file in self.X[index]]
+            label_batch = [torch.LongTensor(
+                self.L[self._parse_x_name(x_file)]) for x_file in self.X[index]]
+            phoneid_batch = [torch.LongTensor(
+                self.Y[self._parse_x_name(x_file)]) for x_file in self.X[index]]
+            # bucketing,
+            return wav_batch, label_batch, phoneid_batch
+
+        else:
+            x = self.X[index]
+            wav = self._load_wav(x)
+            label = torch.LongTensor(
+                self.L[self._parse_x_name(x)])
+            phones = torch.LongTensor(
+                self.Y[self._parse_x_name(x)])
+            return wav, label, phones
 
     def collate_fn(self, items):
-        # hack bucketing, return (wavs, labels)
-        return items[0][0], items[0][1], items[0][2]
+        if self.bucketing:
+            # hack bucketing, return (wavs, labels)
+            return items[0][0], items[0][1], items[0][2]
+        else:
+            return list(zip(*items))

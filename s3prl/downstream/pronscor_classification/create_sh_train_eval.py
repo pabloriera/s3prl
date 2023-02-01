@@ -40,7 +40,7 @@ for mode in ['train', 'eval']:
                     -d pronscor_classification {oconf} {ft_flag}
                 """
         elif mode == 'eval':
-            cmd = f"""python run_downstream.py -m evaluate -e result/downstream/{runname}/best-loss-dev.ckpt
+            cmd = f"""python run_downstream.py -m evaluate -t test -e result/downstream/{runname}/best-loss-dev.ckpt
                 """
 
         cmds.append(cmd)
