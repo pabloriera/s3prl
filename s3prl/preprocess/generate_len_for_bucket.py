@@ -36,7 +36,7 @@ def get_preprocess_args():
 
     parser.add_argument('-i', '--input_data', default='../LibriSpeech/',
                         type=str, help='Path to your LibriSpeech directory', required=False)
-    parser.add_argument('-o', '--output_path', default='./downstream/pronscor/data',
+    parser.add_argument('-o', '--output_path', default='.',
                         type=str, help='Path to store output', required=False)
     parser.add_argument('-a', '--audio_extension', default='.flac', type=str,
                         help='audio file type (.wav / .flac / .mp3 / etc)', required=False)
@@ -109,7 +109,7 @@ def main():
         SETS = ['train-clean-100', 'train-clean-360', 'train-other-500',
                 'dev-clean', 'dev-other', 'test-clean', 'test-other']
     elif 'epa' in args.input_data.lower():
-        SETS = ['TRAIN16k','DEV16k','TEST16k']
+        SETS = ['16k']
     elif 'arctic' in args.input_data.lower():
         SETS = ['TRAIN16k','DEV16k','TEST16k']
     else:
