@@ -1,31 +1,80 @@
-import argparse
 from train_utils import get_metrics
 import torch
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
+import numpy as np
+import fire
 
 
-def main(results, split):
-    for record_file in Path(results).rglob(f'{split}*.records'):
-        records = torch.load(record_file)
+def main(input_dir, output_dir='results'):
+
+    dfs = []
+    for record_file in Path(input_dir).rglob('dev*best_loss.records'):
+        records = torch.load(record_file, map_location='cpu')
         df = pd.DataFrame({k: records[k]
                           for k in ['phones', 'scores', 'labels']})
         df = df[df['phones'] != 0]
         df['labels'] = (df['labels']+1)/2
-        df.to_pickle(Path(record_file.parent, f'data_for_eval_{split}.pickle'))
+        if record_file.stem[3].isnumeric():
+            df['name'] = str(record_file.parts[-2])[:-2]
+            df['split'] = record_file.stem[3]
+        else:
+            df['name'] = str(record_file.parts[-2])
+        dfs.append(df)
+    df = pd.concat(dfs)
+    df.to_csv(Path(output_dir, 'pooled_data_for_eval_dev.csv'))
+
+    dfs = []
+    for k, g in df.groupby('name'):
+        metrics_table = get_metrics(g, cost_thrs=None)
+        metrics_table['name'] = k
+        dfs.append(metrics_table)
+    metrics_table_dev = pd.concat(dfs).set_index(
+        'name', append=True).swaplevel(0, 1)
+    metrics_table_dev.to_pickle(
+        Path(output_dir, 'pooled_metrics_table_dev.pickle'))
+
+    thrdict = {}
+    for (n, k), r in metrics_table_dev.loc[(slice(None), 'all'), :].iterrows():
+        ix = r['F1Score'].argmax()
+        f1thr = r['F1Thr'][ix]
+        thrdict[n] = f1thr
+
+    dfs_records = []
+    dfs_metrics = []
+    for record_file in Path(input_dir).rglob('test-0.records'):
+        records = torch.load(record_file, map_location='cpu')
+        df = pd.DataFrame({k: records[k]
+                          for k in ['phones', 'scores', 'labels']})
+        df = df[df['phones'] != 0]
+        df['labels'] = (df['labels']+1)/2
+        if record_file.parts[-2][-1].isnumeric():
+            name = str(record_file.parts[-2])[:-2]
+            df['name'] = name
+        else:
+            name = str(record_file.parts[-2])
+            df['name'] = name
+        dfs_records.append(df)
+
         metrics_table = get_metrics(df, cost_thrs=None)
-        metrics_table.to_pickle(
-            Path(record_file.parent, f'metrics_table_{split}.pickle'))
+        metrics_table['name'] = name
+        dfs_metrics.append(metrics_table)
+    df = pd.concat(dfs_records)
+    df.to_csv(Path(output_dir, 'pooled_data_for_eval_test.csv'))
+
+    metrics_table_test = pd.concat(dfs_metrics).set_index(
+        'name', append=True).swaplevel(0, 1)
+
+    for (n, k), r in metrics_table_test.loc[(slice(None), 'all'), :].iterrows():
+        ix = np.where(r['F1Thr'] > thrdict[n])[0][0]
+        metrics_table_test.loc[(n, k), 'F1Thr'] = thrdict[n]
+        metrics_table_test.loc[(n, k), 'F1Score'] = r['F1Score'][ix]
+
+    metrics_table_test.to_pickle(
+        Path(output_dir, 'pooled_metrics_table_test.pickle'))
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-r', '--results', required=True)
-    parser.add_argument(
-        '-t', '--split', default="test")
 
-    args = parser.parse_args()
-
-    main(args.results, args.split)
+    fire.Fire(main)

@@ -1,4 +1,6 @@
 
+from matplotlib import gridspec
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import pandas as pd
@@ -10,6 +12,7 @@ from sklearn.metrics import precision_recall_curve, precision_recall_fscore_supp
 from scipy import interpolate
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
+
 NUM_PHONES = 40
 
 
@@ -290,7 +293,7 @@ def get_summarisation(phone_ids, labels, predicted, summarise):
                              max_phone_count, n_phones, device=predicted.device)
         for i, phrase in enumerate(min_phrase_list):
             logits[i, :phrase.shape[0], :] = phrase
-    elif summarise == 'lpp':
+    elif summarise == 'lpp' or summarise == 'mean':
         logits = torch.matmul(summarisation_mask, masked_outputs)
         logits = torch.div(logits, frame_counts)
     else:
@@ -368,12 +371,43 @@ def criterion(batch_outputs, batch_labels, class_weight=False, weights=None, nor
         loss_neg, sum_weights_neg = calculate_loss(batch_outputs, batch_labels == 0, batch_labels,
                                                    phone_weights=weights, norm_per_phone_and_class=norm_per_phone_and_class, min_frame_count=min_frame_count)
 
-        if class_weight:
-            total_loss = (loss_pos.sum()/sum_weights_pos +
-                          loss_neg.sum()/sum_weights_pos)
+        if isinstance(class_weight, bool):
+            if class_weight:
+                total_loss = (loss_pos.sum()/sum_weights_pos +
+                              loss_neg.sum()/sum_weights_neg)
+        elif isinstance(class_weight, str):
+            if class_weight == 'only_neg':
+                total_loss = loss_neg.sum()/sum_weights_neg
+            elif class_weight == 'only_pos':
+                total_loss = loss_pos.sum()/sum_weights_pos
         else:
-            total_loss = (loss_pos + loss_neg).sum()
-            total_weights = sum_weights_pos + sum_weights_neg
-            total_loss /= total_weights
+            total_loss = (loss_pos + loss_neg).sum() / \
+                (sum_weights_pos + sum_weights_neg)
 
     return total_loss
+
+
+class DynamicSubplots():
+    def __init__(self, figsize=None, ncol=3):
+        self.ncol = ncol
+        self.count = 0
+        self.row = 1
+        self.col = 0
+        self.fig = plt.figure(figsize=figsize)
+        self.figsize = self.fig.get_size_inches()
+
+    def __call__(self):
+        self.count += 1
+        if self.count <= self.ncol:
+            self.col += 1
+        if self.count % self.ncol == 1:
+            self.row += 1
+        self.fig.set_size_inches(
+            self.figsize[0]*self.col, self.figsize[1]*self.row)
+        gs = gridspec.GridSpec(self.row, self.col)
+        for i, ax in enumerate(self.fig.axes):
+            ax.set_position(gs[i].get_position(self.fig))
+            ax.set_subplotspec(gs[i])
+        new_ax = self.fig.add_subplot(self.row, self.col, self.count)
+        plt.sca(new_ax)
+        return self

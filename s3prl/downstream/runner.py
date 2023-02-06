@@ -155,7 +155,6 @@ class Runner():
         if is_initialized() and get_rank() > 0:
             torch.distributed.barrier()
             upstream_refresh = False
-
         model = Upstream(
             ckpt=ckpt_path,
             model_config=self.args.upstream_model_config,

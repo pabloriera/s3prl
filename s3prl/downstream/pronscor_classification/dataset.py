@@ -62,10 +62,8 @@ class PronscorDataset(Dataset):
             line = line.strip('\n').split(' ')
             self.L[line[0]] = [int(l) for l in line[1:]]
 
-
-
         split_list = open(os.path.join(
-                phone_path, f'{split}_split.txt')).readlines() 
+            phone_path, f'{split}_split.txt')).readlines()
         usage_list = [line.strip('\n') for line in split_list]
 
         # if split == 'train':
@@ -81,7 +79,6 @@ class PronscorDataset(Dataset):
         #         phone_path, 'test_split.txt')).readlines()
         #     usage_list = [line.strip('\n') for line in test_list]
 
-
         usage_list = {line.strip('\n'): None for line in usage_list}
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
               ', number of data for ' + split + ': ' + str(len(usage_list)))
@@ -91,7 +88,7 @@ class PronscorDataset(Dataset):
 
         try:
             table = pd.read_csv(os.path.join(bucket_file, '16k.csv')).sort_values(
-                    by=['length'], ascending=False) 
+                by=['length'], ascending=False)
 
         except:
             if split == 'train':

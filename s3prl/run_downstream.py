@@ -151,7 +151,7 @@ def get_downstream_args():
 
         # overwrite args
         cannot_overwrite_args = [
-            'mode', 'evaluate_split', 'override',
+            'mode', 'evaluate_split', 'override', 'device',
             'backend', 'local_rank', 'past_exp',
         ]
         args = update_args(args, ckpt['Args'],

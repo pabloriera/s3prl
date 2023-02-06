@@ -36,6 +36,7 @@ class DownstreamExpert(nn.Module):
             self.phone_weights = None
         self.npc = self.datarc.get('npc', False)
         self.summarise = self.datarc.get('summarise', None)
+        self.eval_summarise = self.datarc.get('eval_summarise', 'mean')
         self.class_weight = self.datarc.get('class_weight', False)
         self.train_dataset = PronscorDataset(
             'train', self.datarc['train_batch_size'], **self.datarc)
@@ -58,28 +59,6 @@ class DownstreamExpert(nn.Module):
         self.model = model_cls(
             self.upstream_dim, output_class_num=self.train_dataset.class_num, **model_conf)
 
-    def _get_train_dataloader(self, dataset):
-        if self.datarc['bucketing']:
-            batch_size = 1
-        else:
-            batch_size = self.datarc['train_batch_size']
-        return DataLoader(
-            dataset, batch_size=batch_size,  # for bucketing
-            shuffle=True, num_workers=self.datarc['num_workers'],
-            drop_last=False, pin_memory=True, collate_fn=dataset.collate_fn
-        )
-
-    def _get_eval_dataloader(self, dataset):
-        if self.datarc.get('bucketing', True):
-            batch_size = 1
-        else:
-            batch_size = self.datarc['eval_batch_size']
-        return DataLoader(
-            dataset, batch_size=batch_size,  # for bucketing
-            shuffle=False, num_workers=self.datarc['num_workers'],
-            drop_last=False, pin_memory=True, collate_fn=dataset.collate_fn
-        )
-
     """
     Datalaoder Specs:
         Each dataloader should output in the following format:
@@ -90,20 +69,26 @@ class DownstreamExpert(nn.Module):
         each wav is torch.FloatTensor in cpu with dim()==1 and sample_rate==16000
     """
 
-    def get_train_dataloader(self):
-        return self._get_train_dataloader(self.train_dataset)
-
-    def get_dev_dataloader(self):
-        return self._get_eval_dataloader(self.dev_dataset)
-
-    def get_test_dataloader(self):
-        return self._get_eval_dataloader(self.test_dataset)
-
     # Interface
     def get_dataloader(self, split):
-        return eval(f'self.get_{split}_dataloader')()
+        if 'train' in split:
+            dataset = self.train_dataset
+            batch_size = self.datarc['train_batch_size']
+        elif 'dev' in split or 'test' in split:
+            dataset = self.dev_dataset
+            batch_size = self.datarc['eval_batch_size']
+
+        if self.datarc.get('bucketing', True):
+            batch_size = 1
+
+        return DataLoader(
+            dataset, batch_size=batch_size,  # for bucketing
+            shuffle=True, num_workers=self.datarc['num_workers'],
+            drop_last=False, pin_memory=True, collate_fn=dataset.collate_fn
+        )
 
     # Interface
+
     def forward(self, split, features, labels, phone_ids, records, **kwargs):
         """
         Args:
@@ -147,6 +132,10 @@ class DownstreamExpert(nn.Module):
 
         predicted = self.model(features)
 
+        if 'dev' in split or 'test' in split:
+            predicted_copy = torch.clone(predicted)
+            labels_copy = torch.clone(labels)
+
         if self.summarise is not None:
             predicted, labels, _, phones_id_list = get_summarisation(
                 phone_ids, labels, predicted, self.summarise)
@@ -156,14 +145,20 @@ class DownstreamExpert(nn.Module):
                          norm_per_phone_and_class=self.npc, min_frame_count=0)
         records['loss'] += [loss]
 
-        if split in ['dev', 'test']:
-            if self.summarise is None:
+        if 'dev' in split or 'test' in split:
+            if self.eval_summarise is None:
                 for i in [-1, 1]:
-                    _scores = predicted[labels == i]
-                    records['phones'] += torch.where(labels == i)[2].tolist()
+                    _scores = predicted_copy[labels == i]
+                    records['phones'] += torch.where(
+                        labels_copy == i)[2].tolist()
                     records['scores'] += _scores.tolist()
                     records['labels'] += (i*torch.ones(len(_scores))).tolist()
-            else:
+
+            if self.eval_summarise != self.summarise:
+                predicted, labels, _, phones_id_list = get_summarisation(
+                    phone_ids, labels_copy, predicted_copy, self.eval_summarise)
+
+            if self.eval_summarise is not None:
                 gops_by_phone = torch.sum(predicted, dim=2)
                 labels_by_phone = torch.sum(labels, dim=2)
                 for i, (phnlist, labs, gops) in enumerate(zip(phones_id_list, labels_by_phone, gops_by_phone)):
@@ -194,7 +189,11 @@ class DownstreamExpert(nn.Module):
                 global_step in runner, which is helpful for Tensorboard logging
         """
 
+        # if split[-1].isnumeric():
+        #     prefix = f'pronscor/{split[:-1]}'
+        # else:
         prefix = f'pronscor/{split}'
+
         average_loss = torch.FloatTensor(records['loss']).mean().item()
         logger.add_scalar(
             f'{prefix}-loss',
@@ -203,18 +202,18 @@ class DownstreamExpert(nn.Module):
         )
 
         message = f'{prefix}|step:{global_step}|loss:{average_loss} \n'
-        is_best_loss = False
         save_names = []
         if average_loss < self.best_loss[prefix]:
             self.best_loss[prefix] = average_loss
             message = f'best_loss|{message}'
-            is_best_loss = True
             save_names.append(f'best-loss-{split}.ckpt')
+            save_path = Path(self.expdir, f'{split}-best_loss'+'.records')
+            torch.save(records, save_path)
 
         with open(self.logging, 'a') as f:
             f.write(message)
 
-        if split in ['dev', 'test']:
+        if 'dev' in split or 'test' in split:
 
             df = pd.DataFrame({k: records[k]
                                for k in ['phones', 'scores', 'labels']})
@@ -234,6 +233,8 @@ class DownstreamExpert(nn.Module):
                 self.best_f1[prefix] = average_f1_scores
                 message = f'best_f1|{message}'
                 save_names.append(f'best-f1-{split}.ckpt')
+                save_path = Path(self.expdir, f'{split}-best_f1'+'.records')
+                torch.save(records, save_path)
 
             average_1mauc = metrics_table.loc['all']['1-AUC']
             logger.add_scalar(
@@ -245,13 +246,12 @@ class DownstreamExpert(nn.Module):
 
             if average_1mauc > self.best_1mauc[prefix]:
                 self.best_1mauc[prefix] = average_1mauc
-                message = f'best_f1|{message}'
+                message = f'best_1mauc|{message}'
                 save_names.append(f'best-1-AUC-{split}.ckpt')
+                save_path = Path(self.expdir, f'{split}-best_1mauc'+'.records')
+                torch.save(records, save_path)
 
             records_name = f'{split}-{global_step}'
-            if is_best_loss:
-                records_name = f'{records_name}-best_loss'
-
             save_path = Path(self.expdir, records_name+'.records')
             torch.save(records, save_path)
 
