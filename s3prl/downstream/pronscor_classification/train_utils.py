@@ -20,11 +20,13 @@ def get_metrics(df, cost_thrs=None, f1_thr=None):
 
     metrics = dict()
 
-    metrics['all'] = compute_metrics(df, cost_thr=None, f1_thr=f1_thr)
+    # metrics['all'] = compute_metrics(df, cost_thr=None, f1_thr=f1_thr)
+    metrics['all'] = compute_metrics(df)
 
     for phone, g in df.groupby('phones'):
-        cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
-        metrics[phone] = compute_metrics(g, cost_thr=cost_thr, f1_thr=f1_thr)
+        # cost_thr = cost_thrs[phone]['MinCostThr'] if cost_thrs is not None else None
+        # metrics[phone] = compute_metrics(g, cost_thr=cost_thr, f1_thr=f1_thr)
+        metrics[phone] = compute_metrics(g)
 
     metrics_table = pd.DataFrame(metrics).T
     metrics_table.index.name = 'phones'
@@ -32,7 +34,87 @@ def get_metrics(df, cost_thrs=None, f1_thr=None):
     return metrics_table
 
 
-def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
+# def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
+#     if pos_label == 0:
+#         scores = -df['scores']
+#         labels = 1-df['labels']
+#     elif pos_label == 1:
+#         scores = df['scores']
+#         labels = df['labels']
+
+#     if f1_thr is None:
+#         precision, recall, f1_thr = precision_recall_curve(
+#             labels, scores)
+
+#         numerator = 2 * recall * precision
+#         denom = recall + precision
+#         f1_scores = np.divide(
+#             numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
+#     else:
+#         precision, recall, f1_scores, _ = precision_recall_fscore_support(
+#             labels, scores > f1_thr, average='binary')
+
+#         # TR = ((df['scores'] < 0) & (df['label'] == 0)).sum()
+#         # FR = ((df['scores'] < 0) & (df['label'] == 1)).sum()
+#         # FA = ((df['scores'] > 0) & (df['label'] == 0)).sum()
+
+#         # precision = TR/(TR+FR)
+#         # recall = TR/(TR+FA)
+#         # f1_scores = 2*(precision*recall)/(precision+recall)
+
+#     fpr, tpr, thr = roc_curve(labels, scores)
+#     fnr = 1-tpr
+
+#     # Use the best (cheating) threshold to get the min_cost
+#     cost_normalizer = min(cost_fp, 1.0)
+#     cost = (cost_fp * fpr + fnr)/cost_normalizer
+#     # min_cost_idx = np.argmin(cost)
+#     # min_cost_thr = thr[min_cost_idx]
+#     # min_cost = cost[min_cost_idx]
+#     # min_cost_fpr = fpr[min_cost_idx]
+#     # min_cost_fnr = fnr[min_cost_idx]
+
+# #     if cost_thr is not None:
+# #         det_pos = labels[scores > cost_thr]
+# #         det_neg = labels[scores <= cost_thr]
+# #         act_cost_fpr = np.sum(det_pos == 0)/np.sum(labels == 0)
+# #         act_cost_fnr = np.sum(det_neg == 1)/np.sum(labels == 1)
+# #         act_cost = (cost_fp * act_cost_fpr + act_cost_fnr)/cost_normalizer
+# # #        print(min_cost, act_cost, cost_thr, min_cost_thr)
+# #     else:
+# #         act_cost_fpr = min_cost_fpr
+# #         act_cost_fnr = min_cost_fnr
+# #         act_cost = min_cost
+
+#     aucv = auc(fpr, tpr)
+#     eerv = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
+
+#     metrics = {
+#         "1-AUC": 1-aucv,
+#         "EER": eerv,
+#         "Cost": cost,
+#         # "MinCostThr": min_cost_thr,
+#         # "FPR4MinCost": min_cost_fpr,
+#         # "FNR4MinCost": min_cost_fnr,
+#         # "ActCost": act_cost,
+#         # "FPR4ActCost": act_cost_fpr,
+#         # "FNR4ActCost": act_cost_fnr,
+#         "Pos_Count": np.sum(labels),
+#         "Neg_Count": len(labels)-np.sum(labels),
+#         "FPR": fpr,
+#         "FNR": fnr,
+#         "Pos_Scores": scores[labels == 1],
+#         "Neg_Scores": scores[labels == 0],
+#         "Recall": recall,
+#         "Precision": precision,
+#         "F1Score": f1_scores,
+#         "F1Thr": f1_thr
+#     }
+
+#     return metrics
+
+
+def compute_metrics(df, cost_fp=0.5, pos_label=0):
     if pos_label == 0:
         scores = -df['scores']
         labels = 1-df['labels']
@@ -40,25 +122,13 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
         scores = df['scores']
         labels = df['labels']
 
-    if f1_thr is None:
-        precision, recall, f1_thr = precision_recall_curve(
-            labels, scores)
+    precision, recall, f1_thr = precision_recall_curve(
+        labels, scores)
 
-        numerator = 2 * recall * precision
-        denom = recall + precision
-        f1_scores = np.divide(
-            numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
-    else:
-        precision, recall, f1_scores, _ = precision_recall_fscore_support(
-            labels, scores > f1_thr, average='binary')
-
-        # TR = ((df['scores'] < 0) & (df['label'] == 0)).sum()
-        # FR = ((df['scores'] < 0) & (df['label'] == 1)).sum()
-        # FA = ((df['scores'] > 0) & (df['label'] == 0)).sum()
-
-        # precision = TR/(TR+FR)
-        # recall = TR/(TR+FA)
-        # f1_scores = 2*(precision*recall)/(precision+recall)
+    numerator = 2 * recall * precision
+    denom = recall + precision
+    f1_scores = np.divide(
+        numerator, denom, out=np.zeros_like(denom), where=(denom != 0))
 
     fpr, tpr, thr = roc_curve(labels, scores)
     fnr = 1-tpr
@@ -66,23 +136,23 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
     # Use the best (cheating) threshold to get the min_cost
     cost_normalizer = min(cost_fp, 1.0)
     cost = (cost_fp * fpr + fnr)/cost_normalizer
-    min_cost_idx = np.argmin(cost)
-    min_cost_thr = thr[min_cost_idx]
-    min_cost = cost[min_cost_idx]
-    min_cost_fpr = fpr[min_cost_idx]
-    min_cost_fnr = fnr[min_cost_idx]
+    # min_cost_idx = np.argmin(cost)
+    # min_cost_thr = thr[min_cost_idx]
+    # min_cost = cost[min_cost_idx]
+    # min_cost_fpr = fpr[min_cost_idx]
+    # min_cost_fnr = fnr[min_cost_idx]
 
-    if cost_thr is not None:
-        det_pos = labels[scores > cost_thr]
-        det_neg = labels[scores <= cost_thr]
-        act_cost_fpr = np.sum(det_pos == 0)/np.sum(labels == 0)
-        act_cost_fnr = np.sum(det_neg == 1)/np.sum(labels == 1)
-        act_cost = (cost_fp * act_cost_fpr + act_cost_fnr)/cost_normalizer
-#        print(min_cost, act_cost, cost_thr, min_cost_thr)
-    else:
-        act_cost_fpr = min_cost_fpr
-        act_cost_fnr = min_cost_fnr
-        act_cost = min_cost
+#     if cost_thr is not None:
+#         det_pos = labels[scores > cost_thr]
+#         det_neg = labels[scores <= cost_thr]
+#         act_cost_fpr = np.sum(det_pos == 0)/np.sum(labels == 0)
+#         act_cost_fnr = np.sum(det_neg == 1)/np.sum(labels == 1)
+#         act_cost = (cost_fp * act_cost_fpr + act_cost_fnr)/cost_normalizer
+# #        print(min_cost, act_cost, cost_thr, min_cost_thr)
+#     else:
+#         act_cost_fpr = min_cost_fpr
+#         act_cost_fnr = min_cost_fnr
+#         act_cost = min_cost
 
     aucv = auc(fpr, tpr)
     eerv = brentq(lambda x: 1. - x - interpolate.interp1d(fpr, tpr)(x), 0., 1.)
@@ -90,19 +160,20 @@ def compute_metrics(df, cost_fp=0.5, cost_thr=None, f1_thr=None, pos_label=0):
     metrics = {
         "1-AUC": 1-aucv,
         "EER": eerv,
-        "MinCost": min_cost,
-        "MinCostThr": min_cost_thr,
-        "FPR4MinCost": min_cost_fpr,
-        "FNR4MinCost": min_cost_fnr,
-        "ActCost": act_cost,
-        "FPR4ActCost": act_cost_fpr,
-        "FNR4ActCost": act_cost_fnr,
-        "POS_COUNT": np.sum(labels),
-        "NEG_COUNT": len(labels)-np.sum(labels),
+        "Cost": cost,
+        # "MinCostThr": min_cost_thr,
+        # "FPR4MinCost": min_cost_fpr,
+        # "FNR4MinCost": min_cost_fnr,
+        # "ActCost": act_cost,
+        # "FPR4ActCost": act_cost_fpr,
+        # "FNR4ActCost": act_cost_fnr,
+        "1_Count": np.sum(labels == 1),
+        "0_Count": np.sum(labels == 0),
         "FPR": fpr,
         "FNR": fnr,
-        "POS": scores[labels == 1],
-        "NEG": scores[labels == 0],
+        "THR": thr,
+        "1_Scores": scores[labels == 1],
+        "0_Scores": scores[labels == 0],
         "Recall": recall,
         "Precision": precision,
         "F1Score": f1_scores,

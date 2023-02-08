@@ -3,8 +3,8 @@ runner:
   gradient_clipping: 1
   gradient_accumulate_steps: 2
 
-  log_step: 200
-  eval_step: 200
+  log_step: 400
+  eval_step: 400
   save_step: 4000
   max_keep: 2
   eval_dataloaders:
@@ -25,7 +25,7 @@ runner:
 
 optimizer:
   name: AdamW
-  lr: 2.0e-4
+  lr: 1.5e-4
 
 downstream_expert:
   datarc:

@@ -1,25 +1,53 @@
 set -e
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_linear_ns/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_linear_ns/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_linear_lpp/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_linear_lpp/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_linear_cw/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_linear_cw/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_linear_ns/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_linear_lpp/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_linear_cw/best-loss-dev.ckpt
-                
-python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw/best-loss-dev.ckpt
-                
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_0/best-loss-dev0.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_cw_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_0/best-loss-dev0.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_lpp_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_0/best-loss-dev0.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_large_ll60k_linear_ns_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_0/best-loss-dev0.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_cw_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_lpp_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_hubert_linear_ns_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_lpp_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_lpp_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_lpp_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_lpp_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_lpp_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_ns_1/best-loss-dev1.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_ns_2/best-loss-dev2.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_ns_3/best-loss-dev3.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_ns_4/best-loss-dev4.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/epa_wavlm_large_linear_ns_5/best-loss-dev5.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_ll60k_linear_cw/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_ll60k_linear_lpp/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_large_ll60k_linear_ns/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_linear_cw/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_hubert_linear_lpp_cw/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_wavlm_linear_cw/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_wavlm_linear_lpp/best-loss-dev.ckpt --device cpu
+python run_downstream.py -m evaluate -t test -e result/downstream/l2arctic_wavlm_linear_ns/best-loss-dev.ckpt --device cpu
