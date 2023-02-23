@@ -59,6 +59,13 @@ class DownstreamExpert(nn.Module):
         self.model = model_cls(
             self.upstream_dim, output_class_num=self.train_dataset.class_num, **model_conf)
 
+        self.reslayer = None
+        if self.reslayer is not None:
+            self.reslayer = model_cls(
+                self.upstream_dim, output_class_num=self.train_dataset.class_num, **model_conf)
+            # self.reslayer.linear.weight.data.fill_(0.0)
+            # self.reslayer.linear.bias.data.fill_(0.0)
+
     """
     Datalaoder Specs:
         Each dataloader should output in the following format:
@@ -131,6 +138,12 @@ class DownstreamExpert(nn.Module):
             phone_weights = None
 
         predicted = self.model(features)
+
+        if self.reslayer is not None:
+            # with torch.no_grad():
+            # predicted = self.model(features)
+            predicted = predicted + self.reslayer(features)
+        # else:
 
         if 'dev' in split or 'test' in split:
             predicted_copy = torch.clone(predicted)
