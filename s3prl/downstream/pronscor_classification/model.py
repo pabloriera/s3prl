@@ -9,6 +9,7 @@
 
 
 
+import pandas as pd
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
@@ -48,6 +49,21 @@ class ConvBank(nn.Module):
 
         predicted = self.out_linear(hidden)
 
+        return predicted
+
+
+
+class IPAMask(nn.Module):
+    def __init__(self, input_dim, output_class_num, **kwargs):
+        super(IPAMask, self).__init__()
+
+        print('Reading downstream/pronscor_classification/ARPABET_IPA_MATRIX.csv')
+        df = pd.read_csv('downstream/pronscor_classification/ARPABET_IPA_MATRIX.csv')
+        self.phone_mask  = torch.tensor(df.values).T.float()
+
+    def forward(self, features):
+        device = features.device
+        predicted = torch.matmul(features, self.phone_mask.to(device))
         return predicted
 
 

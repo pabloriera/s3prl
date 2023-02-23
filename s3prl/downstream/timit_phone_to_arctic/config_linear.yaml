@@ -1,7 +1,7 @@
 runner:
   total_steps: 15000
   gradient_clipping: 1
-  gradient_accumulate_steps: 1
+  gradient_accumulate_steps: 2
 
   log_step: 1000
   eval_step: 1000
@@ -9,11 +9,11 @@ runner:
   max_keep: 1
   eval_dataloaders:
     - dev
-    - test
+    # - test
 
 optimizer:
   name: AdamW
-  lr: 2.e-4
+  lr: 1.5e-4
 
 downstream_expert:
   datarc:

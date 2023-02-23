@@ -38,14 +38,20 @@ class DownstreamExpert(nn.Module):
         self.summarise = self.datarc.get('summarise', None)
         self.eval_summarise = self.datarc.get('eval_summarise', 'mean')
         self.class_weight = self.datarc.get('class_weight', False)
-        self.train_dataset = PronscorDataset(
-            'train', self.datarc['train_batch_size'], **self.datarc)
-        self.dev_dataset = PronscorDataset(
-            'dev', self.datarc['eval_batch_size'], **self.datarc)
-        self.test_dataset = PronscorDataset(
-            'test', self.datarc['eval_batch_size'], **self.datarc)
-        # self.model = Model(input_dim=self.upstream_dim,
-        #    output_class_num=self.train_dataset.class_num, **self.modelrc)
+
+        runner = kwargs['runner']
+        runner['train_dataloader'] = runner.get('train_dataloader', 'train')
+        self.datasets = {}
+        for split in runner['eval_dataloaders']:
+            self.datasets[split] = PronscorDataset(
+                split, self.datarc['eval_batch_size'], **self.datarc)
+        self.datasets[runner['train_dataloader']] = PronscorDataset(
+            runner['train_dataloader'], self.datarc['eval_batch_size'], **self.datarc)
+        self.datasets[kwargs['evaluate_split']] = PronscorDataset(
+            kwargs['evaluate_split'], self.datarc['eval_batch_size'], **self.datarc)
+
+        self.class_num = self.datasets[runner['train_dataloader']].class_num
+
         self.objective = nn.BCEWithLogitsLoss()
 
         self.logging = os.path.join(expdir, 'log.log')
@@ -57,7 +63,7 @@ class DownstreamExpert(nn.Module):
         model_cls = eval(self.modelrc['select'])
         model_conf = self.modelrc[self.modelrc['select']]
         self.model = model_cls(
-            self.upstream_dim, output_class_num=self.train_dataset.class_num, **model_conf)
+            self.upstream_dim, output_class_num=self.class_num, **model_conf)
 
         self.reslayer = None
         if self.reslayer is not None:
@@ -79,11 +85,11 @@ class DownstreamExpert(nn.Module):
     # Interface
     def get_dataloader(self, split):
         if 'train' in split:
-            dataset = self.train_dataset
             batch_size = self.datarc['train_batch_size']
         elif 'dev' in split or 'test' in split:
-            dataset = self.dev_dataset
             batch_size = self.datarc['eval_batch_size']
+
+        dataset = self.datasets[split]
 
         if self.datarc.get('bucketing', True):
             batch_size = 1
@@ -128,9 +134,8 @@ class DownstreamExpert(nn.Module):
             loss:
                 the loss to be optimized, should not be detached
         """
-
         features, labels, phone_ids, lengths = process_input_forward(
-            features, labels, phone_ids, self.train_dataset.class_num)
+            features, labels, phone_ids, self.class_num)
 
         if self.phone_weights is not None:
             phone_weights = self.phone_weights.to(features.device)
@@ -257,7 +262,7 @@ class DownstreamExpert(nn.Module):
             )
             message = f'{prefix}|step:{global_step}|1-AUC:{average_1mauc} \n'
 
-            if average_1mauc > self.best_1mauc[prefix]:
+            if average_1mauc < self.best_1mauc[prefix]:
                 self.best_1mauc[prefix] = average_1mauc
                 message = f'best_1mauc|{message}'
                 save_names.append(f'best-1-AUC-{split}.ckpt')
@@ -266,6 +271,7 @@ class DownstreamExpert(nn.Module):
 
             records_name = f'{split}-{global_step}'
             save_path = Path(self.expdir, records_name+'.records')
+            print(f"Saving records to {save_path}")
             torch.save(records, save_path)
 
             with open(self.logging, 'a') as f:

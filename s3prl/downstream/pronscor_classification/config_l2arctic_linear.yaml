@@ -1,10 +1,10 @@
 runner:
-  total_steps: 10000
+  total_steps: 12000
   gradient_clipping: 1
   gradient_accumulate_steps: 2
 
-  log_step: 200
-  eval_step: 200
+  log_step: 600
+  eval_step: 600
   save_step: 4000
   max_keep: 2
   eval_dataloaders:
@@ -29,7 +29,7 @@ runner:
 
 optimizer:
   name: AdamW
-  lr: 2.0e-4
+  lr: 1.0e-4
 
 downstream_expert:
   datarc:
@@ -39,9 +39,6 @@ downstream_expert:
     eval_batch_size: 64
     data_root: ./downstream/pronscor_classification/data_l2arctic/L2arctic
     phone_path: ./downstream/pronscor_classification/data_l2arctic
-    #phone_list: 'pronscor_class/data/phones-list.txt'
-    npc: False 
-    # phone_weights: ./downstream/pronscor_classification/data_l2arctic/phone_weights_50.yaml
     bucket_file: ./downstream/pronscor_classification/data_l2arctic/len_for_bucket # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
 

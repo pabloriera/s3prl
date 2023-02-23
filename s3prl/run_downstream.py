@@ -115,8 +115,16 @@ def get_downstream_args():
     args = parser.parse_args()
     backup_files = []
 
+    # overwrite args
+    cannot_overwrite_args = [
+        'mode', 'evaluate_split', 'override', 'device',
+        'backend', 'local_rank', 'past_exp',
+    ]
+
     if args.expdir is None:
         args.expdir = f'result/downstream/{args.expname}'
+    else:
+        cannot_overwrite_args += ['expdir']
 
     if args.auto_resume:
         if os.path.isdir(args.expdir):
@@ -149,13 +157,11 @@ def get_downstream_args():
             out_dict.update(new_dict)
             return Namespace(**out_dict)
 
-        # overwrite args
-        cannot_overwrite_args = [
-            'mode', 'evaluate_split', 'override', 'device',
-            'backend', 'local_rank', 'past_exp',
-        ]
         args = update_args(args, ckpt['Args'],
                            preserve_list=cannot_overwrite_args)
+
+        print(f'[Runner] - Experiment dir {args.expdir}')
+        print(args)
         os.makedirs(args.expdir, exist_ok=True)
         args.init_ckpt = ckpt_pth
         config = ckpt['Config']

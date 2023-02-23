@@ -9,7 +9,8 @@ confs = [('ns', ""),
 
 confs = [('ns', ""),
          ('lpp', "config.downstream_expert.datarc.summarise='lpp'"),
-         ('cw', "config.downstream_expert.datarc.class_weight=True")
+         ('lpp_cw', "config.downstream_expert.datarc.summarise='lpp',,config.downstream_expert.datarc.class_weight=True"),
+         ('ns_cw', "config.downstream_expert.datarc.class_weight=True")
          ]
 
 fts = [("", ""),
@@ -21,9 +22,10 @@ fts = [("", "")]
 
 dbs = ['l2arctic', 'epa']
 
-upstreams = ['hubert_large_ll60k', 'hubert']
+upstreams = ['hubert', 'wavlm', 'wav2vec2', 'data2vec_large_ll60k']
 
-for mode in ['train', 'eval']:
+# for mode in ['train', 'eval']:
+for mode in ['train']:
     cmds = []
     for db, ft, conf, upstream in product(dbs, fts, confs, upstreams):
         conf_name, conf = conf
