@@ -11,7 +11,7 @@ from IPython import embed
 def main(input_dir, output_dir='results'):
 
     dfs = []
-    for record_file in Path(input_dir).rglob('dev*best_loss.records'):
+    for record_file in sorted(list(Path(input_dir).rglob('dev*best_loss.records'))):
         records = torch.load(record_file, map_location='cpu')
         df = pd.DataFrame({k: records[k]
                           for k in ['phones', 'scores', 'labels']})
@@ -19,14 +19,13 @@ def main(input_dir, output_dir='results'):
         df['labels'] = (df['labels']+1)/2
         split = None
         if record_file.stem[3].isnumeric():
-            df['name'] = str(record_file.parts[-2])[:-2]
+            df['name'] = f'{record_file.parts[0]}_{(record_file.parts[-2])[:-2]}'
             split = record_file.stem[3]
             df['split'] = split
         else:
-            df['name'] = str(record_file.parts[-2])
+            df['name'] = f'{record_file.parts[0]}_{(record_file.parts[-2])}'
 
-        if split == '0' or split is None:
-            dfs.append(df)
+        dfs.append(df)
 
     df = pd.concat(dfs)
     df.to_csv(Path(output_dir, 'pooled_data_for_eval_dev.csv'))
@@ -57,11 +56,11 @@ def main(input_dir, output_dir='results'):
         df['labels'] = (df['labels']+1)/2
         split = None
         if record_file.parts[-2][-1].isnumeric():
-            name = str(record_file.parts[-2])[:-2]
+            name = f'{record_file.parts[0]}_{(record_file.parts[-2])[:-2]}'
             df['name'] = name
             split = str(record_file.parts[-2])[-1]
         else:
-            name = str(record_file.parts[-2])
+            name = f'{record_file.parts[0]}_{(record_file.parts[-2])}'
             df['name'] = name
 
         if split == '0' or split is None:

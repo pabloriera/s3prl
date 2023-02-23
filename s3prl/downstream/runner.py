@@ -42,31 +42,31 @@ tags:
 
 Upstream Model: {upstream_model}
 
-## Model description
+# Model description
 
 [More information needed]
 
-## Intended uses & limitations
+# Intended uses & limitations
 
 [More information needed]
 
-## How to use
+# How to use
 
 [More information needed]
 
-## Limitations and bias
+# Limitations and bias
 
 [More information needed]
 
-## Training data
+# Training data
 
 [More information needed]
 
-## Training procedure
+# Training procedure
 
 [More information needed]
 
-## Evaluation results
+# Evaluation results
 
 [More information needed]
 
@@ -91,6 +91,7 @@ class Runner():
         self.args = args
         self.config = config
         if self.args.init_ckpt:
+            print('Loading Init CKPT', self.args.init_ckpt)
             self.init_ckpt = torch.load(
                 self.args.init_ckpt, map_location='cpu')
             self.init_ckpt['Epoch'] = 0
@@ -119,7 +120,7 @@ class Runner():
 
         if is_initialized() and trainable and any((p.requires_grad for p in model.parameters())):
             model = DDP(model, device_ids=[
-                        self.args.local_rank], find_unused_parameters=True)
+                self.args.local_rank], find_unused_parameters=True)
             for interface in interfaces or []:
                 setattr(model, interface, getattr(model.module, interface))
 
@@ -281,7 +282,7 @@ class Runner():
         train_split = self.config['runner'].get("train_dataloader", "train")
         while pbar.n < pbar.total:
             try:
-                #dataloader = self.downstream.model.get_dataloader(train_split, epoch=epoch)
+                # dataloader = self.downstream.model.get_dataloader(train_split, epoch=epoch)
                 dataloader = self.downstream.model.get_dataloader(train_split)
             except TypeError as e:
                 if "unexpected keyword argument 'epoch'" in str(e):

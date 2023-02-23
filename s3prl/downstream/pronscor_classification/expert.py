@@ -40,6 +40,7 @@ class DownstreamExpert(nn.Module):
         self.class_weight = self.datarc.get('class_weight', False)
 
         runner = kwargs['runner']
+        runner['train_dataloader'] = runner.get('train_dataloader', 'train')
         self.datasets = {}
         for split in runner['eval_dataloaders']:
             self.datasets[split] = PronscorDataset(
@@ -126,7 +127,6 @@ class DownstreamExpert(nn.Module):
             loss:
                 the loss to be optimized, should not be detached
         """
-
         features, labels, phone_ids, lengths = process_input_forward(
             features, labels, phone_ids, self.class_num)
 
@@ -249,7 +249,7 @@ class DownstreamExpert(nn.Module):
             )
             message = f'{prefix}|step:{global_step}|1-AUC:{average_1mauc} \n'
 
-            if average_1mauc > self.best_1mauc[prefix]:
+            if average_1mauc < self.best_1mauc[prefix]:
                 self.best_1mauc[prefix] = average_1mauc
                 message = f'best_1mauc|{message}'
                 save_names.append(f'best-1-AUC-{split}.ckpt')
@@ -258,6 +258,7 @@ class DownstreamExpert(nn.Module):
 
             records_name = f'{split}-{global_step}'
             save_path = Path(self.expdir, records_name+'.records')
+            print(f"Saving records to {save_path}")
             torch.save(records, save_path)
 
             with open(self.logging, 'a') as f:
