@@ -12,13 +12,13 @@ from torch.utils.data.dataset import Dataset
 #-------------#
 import torchaudio
 import numpy as np
-
+from pathlib import Path
 
 # TODO: use phone dictionaries not fixed number
 from .train_utils import get_phone_dictionaries, NUM_PHONES
 
 
-HALF_BATCHSIZE_TIME = 2000
+HALF_BATCHSIZE_TIME = 8000
 TEST_SPEAKERS = []
 
 #################
@@ -126,8 +126,7 @@ class PronscorDataset(Dataset):
 
             # Gather the last batch
             if len(batch_x) > 1:
-                if self._parse_x_name(x) in usage_list:
-                    self.X.append(batch_x)
+                self.X.append(batch_x)
         else:
             for x, x_len in zip(X, X_lens):
                 if self._parse_x_name(x) in usage_list:
@@ -153,8 +152,9 @@ class PronscorDataset(Dataset):
                 self.L[self._parse_x_name(x_file)]) for x_file in self.X[index]]
             phoneid_batch = [torch.LongTensor(
                 self.Y[self._parse_x_name(x_file)]) for x_file in self.X[index]]
+            fnames = [Path(x_file).stem for x_file in self.X[index]]
             # bucketing,
-            return wav_batch, label_batch, phoneid_batch
+            return wav_batch, label_batch, phoneid_batch, fnames
 
         else:
             x = self.X[index]
@@ -168,6 +168,6 @@ class PronscorDataset(Dataset):
     def collate_fn(self, items):
         if self.bucketing:
             # hack bucketing, return (wavs, labels)
-            return items[0][0], items[0][1], items[0][2]
+            return items[0][0], items[0][1], items[0][2], items[0][3]
         else:
             return list(zip(*items))

@@ -1,5 +1,5 @@
 runner:
-  total_steps: 12000
+  total_steps: 2
   gradient_clipping: 1
   gradient_accumulate_steps: 2
 
@@ -11,17 +11,17 @@ runner:
      - dev
 
   # debbugin
-  #total_steps: 2
-  #gradient_clipping: 1
-  #gradient_accumulate_steps: 1
+  total_steps: 2
+  gradient_clipping: 1
+  gradient_accumulate_steps: 1
 
-  #log_step: 1
-  #eval_step: 1
-  #save_step: 1
-  #max_keep: 1
-  #eval_dataloaders:
-    #- dev
-   # - test
+  log_step: 1
+  eval_step: 1
+  save_step: 1
+  max_keep: 1
+  eval_dataloaders:
+    - dev
+    - test
 
 optimizer:
   name: AdamW

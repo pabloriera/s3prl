@@ -52,6 +52,7 @@ class DownstreamExpert(nn.Module):
 
         self.class_num = self.datasets[runner['train_dataloader']].class_num
 
+
         self.objective = nn.BCEWithLogitsLoss()
 
         self.logging = os.path.join(expdir, 'log.log')
@@ -102,7 +103,7 @@ class DownstreamExpert(nn.Module):
 
     # Interface
 
-    def forward(self, split, features, labels, phone_ids, records, **kwargs):
+    def forward(self, split, features, labels, phone_ids, filenames, records, **kwargs):
         """
         Args:
             features:
@@ -171,6 +172,8 @@ class DownstreamExpert(nn.Module):
                         labels_copy == i)[2].tolist()
                     records['scores'] += _scores.tolist()
                     records['labels'] += (i*torch.ones(len(_scores))).tolist()
+                    # TODO: check this
+                    records['filenames'] +=  [filenames]
 
             if self.eval_summarise != self.summarise:
                 predicted, labels, _, phones_id_list = get_summarisation(
@@ -185,6 +188,7 @@ class DownstreamExpert(nn.Module):
                     records['phones'] += phnlist.tolist()
                     records['scores'] += phrase_gops.tolist()
                     records['labels'] += phrase_labels.tolist()
+                    records['filenames'] += [f'{filenames[i]}_{k}' for k in range(len(phnlist.tolist()))]
 
         return loss
 
