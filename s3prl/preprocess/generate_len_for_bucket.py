@@ -71,6 +71,8 @@ def generate_length(args, tr_set, audio_extension):
             assert NotImplementedError
 
         print('')
+        print(args.input_data, s)
+
         todo = list(Path(os.path.join(args.input_data, s)).rglob(
             '*' + audio_extension))  # '*.flac'
         print(f'Preprocessing data in: {s}, {len(todo)} audio files found.')
@@ -111,7 +113,8 @@ def main():
     elif 'epa' in args.input_data.lower():
         SETS = ['16k']
     elif 'arctic' in args.input_data.lower():
-        SETS = ['TRAIN16k','DEV16k','TEST16k']
+        SETS = ['TRAIN16k', 'DEV16k', 'TEST16k']
+        SETS = ['ALL16k']
     else:
         raise NotImplementedError
     # change the SETS list to match your dataset, for example:

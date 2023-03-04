@@ -33,7 +33,8 @@ class PronscorDataset(Dataset):
             split,
             bucket_size,
             data_root,
-            phone_path,
+            alignments_path,
+            splits_path,
             bucket_file,
             sample_rate=16000,
             bucketing=True,
@@ -42,7 +43,8 @@ class PronscorDataset(Dataset):
         super(PronscorDataset, self).__init__()
 
         self.data_root = data_root
-        self.phone_path = phone_path
+        self.alignments_path = alignments_path
+        self.splits_path = splits_path
         self.sample_rate = sample_rate
         self.class_num = NUM_PHONES  # NOTE: pre-computed, should not need change
         # Create phone dictionaries
@@ -50,34 +52,21 @@ class PronscorDataset(Dataset):
 
         self.Y = {}
         phone_file = open(os.path.join(
-            phone_path, 'converted_aligned_phones.txt')).readlines()
+            alignments_path, 'converted_aligned_phones.txt')).readlines()
         for line in phone_file:
             line = line.strip('\n').split(' ')
             self.Y[line[0]] = [int(p) for p in line[1:]]
 
         self.L = {}
         label_file = open(os.path.join(
-            phone_path, 'converted_aligned_labels.txt')).readlines()
+            alignments_path, 'converted_aligned_labels.txt')).readlines()
         for line in label_file:
             line = line.strip('\n').split(' ')
             self.L[line[0]] = [int(l) for l in line[1:]]
 
         split_list = open(os.path.join(
-            phone_path, f'{split}_split.txt')).readlines()
+            splits_path, f'{split}_split.txt')).readlines()
         usage_list = [line.strip('\n') for line in split_list]
-
-        # if split == 'train':
-        #     train_list = open(os.path.join(
-        #         phone_path, 'train_split.txt')).readlines()
-        #     usage_list = [line.strip('\n') for line in train_list]
-        # elif split == 'dev':
-        #     dev_list = open(os.path.join(
-        #         phone_path, 'dev_split.txt')).readlines()
-        #     usage_list = [line.strip('\n') for line in dev_list]
-        # elif split == 'test':
-        #     test_list = open(os.path.join(
-        #         phone_path, 'test_split.txt')).readlines()
-        #     usage_list = [line.strip('\n') for line in test_list]
 
         usage_list = {line.strip('\n'): None for line in usage_list}
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
@@ -86,20 +75,8 @@ class PronscorDataset(Dataset):
         assert os.path.isdir(
             bucket_file), f'Missing {bucket_file} Please first run `preprocess/generate_len_for_bucket.py` to get bucket file.'
 
-        try:
-            table = pd.read_csv(os.path.join(bucket_file, '16k.csv')).sort_values(
-                by=['length'], ascending=False)
-
-        except:
-            if split == 'train':
-                table = pd.read_csv(os.path.join(bucket_file, 'TRAIN16k.csv')).sort_values(
-                    by=['length'], ascending=False)
-            elif split == 'dev':
-                table = pd.read_csv(os.path.join(bucket_file, 'DEV16k.csv')).sort_values(
-                    by=['length'], ascending=False)
-            elif split == 'test':
-                table = pd.read_csv(os.path.join(bucket_file, 'TEST16k.csv')).sort_values(
-                    by=['length'], ascending=False)
+        table = pd.read_csv(os.path.join(bucket_file, '16k.csv')).sort_values(
+            by=['length'], ascending=False)
 
         X = table['file_path'].tolist()
         X_lens = table['length'].tolist()
@@ -126,7 +103,14 @@ class PronscorDataset(Dataset):
 
             # Gather the last batch
             if len(batch_x) > 1:
-                self.X.append(batch_x)
+                if (bucket_size >= 2) and (len(batch_x) > bucket_size//2) and (max(batch_len) > HALF_BATCHSIZE_TIME):
+                    self.X.append(batch_x[:bucket_size//2])
+                    self.X.append(batch_x[bucket_size//2:])
+                else:
+                    self.X.append(batch_x)
+
+            print('Batchs length')
+            print(pd.DataFrame(list(map(len, self.X))).value_counts())
         else:
             for x, x_len in zip(X, X_lens):
                 if self._parse_x_name(x) in usage_list:
@@ -163,7 +147,9 @@ class PronscorDataset(Dataset):
                 self.L[self._parse_x_name(x)])
             phones = torch.LongTensor(
                 self.Y[self._parse_x_name(x)])
-            return wav, label, phones
+            fnames = x
+
+            return wav, label, phones, fnames
 
     def collate_fn(self, items):
         if self.bucketing:

@@ -52,14 +52,14 @@ class ConvBank(nn.Module):
         return predicted
 
 
-
 class IPAMask(nn.Module):
     def __init__(self, input_dim, output_class_num, **kwargs):
         super(IPAMask, self).__init__()
 
         print('Reading downstream/pronscor_classification/ARPABET_IPA_MATRIX.csv')
-        df = pd.read_csv('downstream/pronscor_classification/ARPABET_IPA_MATRIX.csv')
-        self.phone_mask  = torch.tensor(df.values).T.float()
+        df = pd.read_csv(
+            'downstream/pronscor_classification/ARPABET_IPA_MATRIX.csv')
+        self.phone_mask = torch.tensor(df.values).T.float()
 
     def forward(self, features):
         device = features.device
@@ -68,12 +68,24 @@ class IPAMask(nn.Module):
 
 
 class Linear(nn.Module):
-    def __init__(self, input_dim, output_class_num, **kwargs):
+    def __init__(self, input_dim, output_class_num, batch_norm=False, dropout=None, **kwargs):
         super(Linear, self).__init__()
+
+        self.batch_norm = batch_norm
+        if batch_norm:
+            self.batch_norm = nn.BatchNorm1d(input_dim)
+
+        self.dropout = dropout
+        if self.dropout is not None:
+            self.dropout = nn.Dropout(self.dropout)
 
         # init attributes
         self.linear = nn.Linear(input_dim, output_class_num)
 
     def forward(self, features):
+        if self.batch_norm:
+            features = self.batch_norm(features.swapdims(1, 2)).swapdims(1, 2)
+        if self.dropout is not None:
+            features = self.dropout(features)
         predicted = self.linear(features)
         return predicted

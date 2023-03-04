@@ -48,7 +48,7 @@ downstream_expert:
     bucketing: True
     eval_batch_size: 64
     data_root: ./downstream/pronscor_classification/data_l2arctic/L2arctic
-    splits_path: ./downstream/pronscor_classification/data_l2arctic/splits_auto
+    splits_path: ./downstream/pronscor_classification/data_l2arctic/splits_xval
     alignments_path: ./downstream/pronscor_classification/data_l2arctic/alignments_auto_label_manual_wzeros
     bucket_file: ./downstream/pronscor_classification/data_l2arctic/len_for_bucket # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
     sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`

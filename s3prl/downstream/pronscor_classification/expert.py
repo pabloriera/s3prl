@@ -42,6 +42,10 @@ class DownstreamExpert(nn.Module):
         runner = kwargs['runner']
         runner['train_dataloader'] = runner.get('train_dataloader', 'train')
         self.datasets = {}
+        if 'phone_path' in self.datarc:
+            if 'epa' in self.datarc['phone_path']:
+                self.datarc['alignments_path'] = self.datarc['phone_path']+'/alignments'
+                self.datarc['splits_path'] = self.datarc['phone_path']+'/splits'
         for split in runner['eval_dataloaders']:
             self.datasets[split] = PronscorDataset(
                 split, self.datarc['eval_batch_size'], **self.datarc)
@@ -51,7 +55,6 @@ class DownstreamExpert(nn.Module):
             kwargs['evaluate_split'], self.datarc['eval_batch_size'], **self.datarc)
 
         self.class_num = self.datasets[runner['train_dataloader']].class_num
-
 
         self.objective = nn.BCEWithLogitsLoss()
 
@@ -173,7 +176,7 @@ class DownstreamExpert(nn.Module):
                     records['scores'] += _scores.tolist()
                     records['labels'] += (i*torch.ones(len(_scores))).tolist()
                     # TODO: check this
-                    records['filenames'] +=  [filenames]
+                    records['filenames'] += [filenames]
 
             if self.eval_summarise != self.summarise:
                 predicted, labels, _, phones_id_list = get_summarisation(
@@ -188,7 +191,8 @@ class DownstreamExpert(nn.Module):
                     records['phones'] += phnlist.tolist()
                     records['scores'] += phrase_gops.tolist()
                     records['labels'] += phrase_labels.tolist()
-                    records['filenames'] += [f'{filenames[i]}_{k}' for k in range(len(phnlist.tolist()))]
+                    records['filenames'] += [
+                        f'{filenames[i]}_{k}' for k in range(len(phnlist.tolist()))]
 
         return loss
 

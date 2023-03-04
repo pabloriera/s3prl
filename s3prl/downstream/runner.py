@@ -162,12 +162,6 @@ class Runner():
             refresh=upstream_refresh,
         ).to(self.args.device)
 
-        # unfreeze_layers = 8
-        # show(f'[Runner] - Freezeing all until last {unfreeze_layers} layers')
-        # params = [param for name, param in model.named_parameters()]
-        # for param in params[:-unfreeze_layers]:
-        #     param.requires_grad = False
-
         if is_initialized() and get_rank() == 0:
             torch.distributed.barrier()
 
@@ -243,7 +237,24 @@ class Runner():
         trainable_paras = []
         for entry in self.all_entries:
             if entry.trainable:
+                if entry.name == 'Upstream':
+                    if self.config.get('unfreeze_layers', None) is not None:
+                        show(
+                            f'[Runner] - Finetunning last {self.config["unfreeze_layers"]} layers')
+                        n_layers = len(entry.model.model.encoder.layers)
+                        entry.model.model.requires_grad_(False)
+                        for i in range(n_layers-self.config['unfreeze_layers'], n_layers):
+                            entry.model.model.encoder.layers[i].requires_grad_(
+                                True)
+                        if hasattr(entry.model.model.encoder, 'layer_norm'):
+                            entry.model.model.encoder.layer_norm.requires_grad_(
+                                True)
+                        if hasattr(entry.model.model, 'layer_norm'):
+                            entry.model.model.layer_norm.requires_grad_(True)
+                        if hasattr(entry.model.model, 'final_proj'):
+                            entry.model.model.final_proj.requires_grad_(True)
                 entry.model.train()
+
                 trainable_models.append(entry.model)
                 trainable_paras += list(entry.model.parameters())
             else:

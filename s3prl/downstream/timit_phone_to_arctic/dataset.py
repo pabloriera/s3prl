@@ -79,6 +79,7 @@ class PhoneDataset(Dataset):
             raise ValueError(
                 'Invalid \'split\' argument for dataset: PhoneDataset!')
         usage_list = {line.strip('\n'): None for line in usage_list}
+        from IPython import embed
         print('[Dataset] - # phone classes: ' + str(self.class_num) +
               ', number of data for ' + split + ': ' + str(len(usage_list)))
 
