@@ -1,0 +1,45 @@
+runner:
+  total_steps: 12000
+  gradient_clipping: 1
+  gradient_accumulate_steps: 2
+
+  log_step: 400
+  eval_step: 400
+  save_step: 4000
+  max_keep: 2
+  eval_dataloaders:
+     - dev
+
+  #  # debbugin
+  # total_steps: 2
+  # gradient_clipping: 1
+  # gradient_accumulate_steps: 1
+
+  # log_step: 1
+  # eval_step: 1
+  # save_step: 1
+  # max_keep: 1
+  # eval_dataloaders:
+  #   - dev
+  #   - test
+
+optimizer:
+  name: AdamW
+  lr: 1.0e-4
+
+downstream_expert:
+  datarc:
+    num_workers: 12
+    train_batch_size: 64
+    eval_batch_size: 64
+    data_root: ./downstream/pronscor_classification/data_epa/EpaDB
+    alignments_path: './downstream/pronscor_classification/data_epa/alignments'
+    splits_path: './downstream/pronscor_classification/data_epa/splits'
+    bucket_file: './downstream/pronscor_classification/data_epa/len_for_bucket' # run: `python preprocess/generate_len_for_bucket.py -i your_path_to/TIMIT -a .WAV -n len_for_bucket_timit`
+    sample_rate: 16000 # this should not be changed, and this should match the sr of the audio in `libri_root`
+
+  modelrc:
+    select: Linear
+    Linear:
+      batch_norm: True
+      dropout: 0.4
